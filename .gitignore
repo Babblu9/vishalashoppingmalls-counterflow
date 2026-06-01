@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Prisma SQLite database (local dev only — do not commit)
+prisma/dev.db
+prisma/dev.db-journal
+prisma/*.db
+prisma/*.db-shm
+prisma/*.db-wal
+
+# Environment variables (contains secrets)
+.env
+.env.local
+.env.production
+.env*.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Test results
+test-results/
+playwright-report/
+
+# Playwright MCP session files
+.playwright-mcp/
+
+# TypeScript build info
+tsconfig.tsbuildinfo

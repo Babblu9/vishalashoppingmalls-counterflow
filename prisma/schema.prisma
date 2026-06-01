@@ -1,0 +1,104 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  username     String        @unique
+  name         String
+  role         String        // "ADMIN" | "SUPER_ADMIN"
+  branchId     String?       // Null for Super Admin
+  branch       Branch?       @relation(fields: [branchId], references: [id])
+  passwordHash String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  reports      DailyReport[] // Reports submitted/modified by this user
+  auditLogs    AuditLog[]
+}
+
+model Branch {
+  id           String        @id @default(uuid())
+  name         String        @unique
+  counters     Counter[]
+  users        User[]
+  reports      DailyReport[]
+}
+
+model Counter {
+  id            String        @id @default(uuid())
+  branchId      String
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  name          String
+  createdAt     DateTime      @default(now())
+  reportEntries ReportEntry[]
+
+  @@unique([branchId, name])
+}
+
+model DailyReport {
+  id            String        @id @default(uuid())
+  branchId      String
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  businessDate  String        // Format: "YYYY-MM-DD"
+  status        String        // "DRAFT" | "SUBMITTED"
+  submittedById String?
+  submittedBy   User?         @relation(fields: [submittedById], references: [id], onDelete: SetNull)
+  submittedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  entries       ReportEntry[]
+
+  @@unique([branchId, businessDate])
+}
+
+model ReportEntry {
+  id           String      @id @default(uuid())
+  reportId     String
+  report       DailyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  counterId    String
+  counter      Counter     @relation(fields: [counterId], references: [id])
+  
+  // Payment breakdowns
+  cash         Float       @default(0)
+  gpay         Float       @default(0)
+  card         Float       @default(0)
+  counterFlow  Float       @default(0)
+  
+  // Dues
+  totalDue     Float       @default(0)
+  collectedDue Float       @default(0)
+
+  // Due Bill details (per counter)
+  dueBillNo    String?
+  dueBillName  String?
+  dueBillAmount Float      @default(0)
+  
+  // Computed values stored for fast indexing / snapshot auditing
+  manualTotal  Float       @default(0)
+  systemTotal  Float       @default(0) // cash + gpay + card + counterFlow + collectedDue
+  difference   Float       @default(0) // manualTotal - systemTotal
+  grandTotal   Float       @default(0) // systemTotal
+  
+  updatedAt    DateTime    @updatedAt
+  auditLogs    AuditLog[]
+
+  @@unique([reportId, counterId])
+}
+
+model AuditLog {
+  id            String       @id @default(uuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  reportEntryId String?
+  reportEntry   ReportEntry? @relation(fields: [reportEntryId], references: [id], onDelete: SetNull)
+  action        String       // "DRAFT_SAVE" | "SUBMIT" | "UNLOCK" | "EDIT"
+  details       String       // JSON describing changed fields, e.g. {"cash": [5000, 5500]}
+  ipAddress     String?
+  userAgent     String?
+  timestamp     DateTime     @default(now())
+}
