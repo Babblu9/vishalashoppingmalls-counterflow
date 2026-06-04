@@ -1,13 +1,4 @@
 import { test, expect, Page } from "@playwright/test";
-import { execSync } from "child_process";
-
-// ─── DB reset helper ─────────────────────────────────────────────────────────
-function resetDB() {
-  execSync('node -e "const {PrismaClient}=require(\'@prisma/client\');const p=new PrismaClient();p.auditLog.deleteMany({}).then(()=>p.reportEntry.deleteMany({})).then(()=>p.dailyReport.deleteMany({})).then(()=>{console.log(\'DB cleared\');p.$disconnect()})"', {
-    cwd: "C:\\Users\\Sai Kumar\\OneDrive\\Desktop\\vishalaShoppingMall",
-    stdio: "pipe",
-  });
-}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 async function loginAs(page: Page, username: string, password: string) {
@@ -58,16 +49,19 @@ test.describe("1. Login", () => {
     await expect(page).toHaveURL(/dashboard/);
   });
 
+  test("admin2 logs in and reaches dashboard", async ({ page }) => {
+    await loginAs(page, "admin2", "admin123");
+    await expect(page).toHaveURL(/dashboard/);
+  });
+
   test("superadmin logs in and reaches dashboard", async ({ page }) => {
     await loginAs(page, "superadmin", "superadmin123");
     await expect(page).toHaveURL(/dashboard/);
   });
 });
 
-// ─── SUITE 2: Admin Dashboard ────────────────────────────────────────────────
-test.describe("2. Admin Dashboard", () => {
-  test.beforeAll(() => resetDB());
-
+// ─── SUITE 2: Admin1 Dashboard (Branch 1 — 15 counters) ─────────────────────
+test.describe("2. Admin1 Dashboard", () => {
   test.beforeEach(async ({ page }) => {
     await loginAs(page, "admin1", "admin123");
   });
@@ -92,7 +86,6 @@ test.describe("2. Admin Dashboard", () => {
 
   test("Branch 1 has 15 counter rows", async ({ page }) => {
     await waitForGrid(page);
-    // Count CASH cell inputs — one per counter row (id=cell-N-1)
     const cashCells = page.locator('[id^="cell-"][id$="-1"]');
     await expect(cashCells).toHaveCount(15, { timeout: 5000 });
   });
@@ -121,13 +114,11 @@ test.describe("2. Admin Dashboard", () => {
 
   test("can expand due bill sub-row and fill fields", async ({ page }) => {
     await waitForGrid(page);
-    // Click the toggle (▶) on the first counter row
     await page.locator("table").first().locator("tbody tr").first().locator("button").first().click();
     await expect(page.locator('input[placeholder="e.g. BL-001"]')).toBeVisible({ timeout: 5000 });
     await page.locator('input[placeholder="e.g. BL-001"]').fill("BL-999");
     await page.locator('input[placeholder="Customer name"]').fill("Test Customer");
     await page.locator('input[placeholder="0"]').fill("2500");
-    // Due Bills summary panel should now list the entry
     await expect(page.locator("text=BL-999")).toBeVisible({ timeout: 3000 });
   });
 
@@ -147,36 +138,42 @@ test.describe("2. Admin Dashboard", () => {
   });
 });
 
-// ─── SUITE 3: Auto-save & persistence ───────────────────────────────────────
-test.describe("3. Auto-save & Persistence", () => {
-  test.beforeAll(() => resetDB());
-
-  test("value auto-saves and persists after reload", async ({ page }) => {
+// ─── SUITE 3: Admin2 Dashboard (Branch 2 — 5 counters) ──────────────────────
+test.describe("3. Admin2 Dashboard", () => {
+  test.beforeEach(async ({ page }) => {
     await loginAs(page, "admin2", "admin123");
-    await waitForGrid(page);
+  });
 
-    // Find Counter 1 row by its name cell and get the sibling CASH input
-    // Counter rows are sorted alphabetically so we locate by text
+  test("header shows Branch 2 Report title", async ({ page }) => {
+    await expect(page.locator("h2")).toContainText(/Branch 2/i, { timeout: 8000 });
+  });
+
+  test("Branch 2 has 5 counter rows", async ({ page }) => {
+    await waitForGrid(page);
+    const cashCells = page.locator('[id^="cell-"][id$="-1"]');
+    await expect(cashCells).toHaveCount(5, { timeout: 5000 });
+  });
+
+  test("auto-saves and persists after reload", async ({ page }) => {
+    await waitForGrid(page);
     const counter1Row = page.locator("table tbody tr").filter({ hasText: /^Counter 1$/ }).first();
     const cashInput = counter1Row.locator('input[id^="cell-"]').first();
-
-    await page.waitForTimeout(500);
     await cashInput.click();
     await cashInput.fill("88888");
     await cashInput.press("Tab");
-
-    // Click Save Draft to guarantee persistence
     await page.locator("button", { hasText: /save draft/i }).click();
     await expect(page.locator("text=Draft auto-saved")).toBeVisible({ timeout: 15000 });
-
     await page.reload();
     await waitForGrid(page);
-
-    // After reload, find Counter 1 again and verify value
     const counter1RowAfter = page.locator("table tbody tr").filter({ hasText: /^Counter 1$/ }).first();
     const cashInputAfter = counter1RowAfter.locator('input[id^="cell-"]').first();
     const val = await cashInputAfter.inputValue();
     expect(val).toMatch(/88[,.]?888/);
+  });
+
+  test("Sign out returns to login", async ({ page }) => {
+    await logout(page);
+    await expect(page).toHaveURL(/login/);
   });
 });
 
@@ -196,8 +193,8 @@ test.describe("4. Super Admin Dashboard", () => {
 
   test("Branch Submissions Tracker shows both branches", async ({ page }) => {
     await expect(page.locator("text=Branch Submissions Tracker")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole("cell", { name: "Siddipet" })).toBeVisible();
-    await expect(page.getByRole("cell", { name: "Sircilla" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Branch 1" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Branch 2" })).toBeVisible();
   });
 
   test("Audit Logs tab works", async ({ page }) => {
@@ -205,19 +202,29 @@ test.describe("4. Super Admin Dashboard", () => {
     await expect(page.locator("text=System Security Audit Logs")).toBeVisible({ timeout: 5000 });
   });
 
-  test("can select Siddipet branch for sheet review", async ({ page }) => {
+  test("Admin Credentials tab works", async ({ page }) => {
+    await page.locator("button", { hasText: /admin credentials/i }).click();
+    await expect(page.locator("text=admin1")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("text=admin2")).toBeVisible({ timeout: 5000 });
+  });
+
+  test("can select Branch 1 for sheet review", async ({ page }) => {
     await page.waitForSelector("text=Individual Branch Sheet Review", { timeout: 10000 });
-    await page.locator("select").selectOption({ label: "Siddipet" });
-    // The review ExcelGrid renders — wait for any cell in it
+    await page.locator("select").selectOption({ label: "Branch 1" });
     await page.waitForSelector('[id^="cell-0-"]', { timeout: 15000 });
     await expect(page.locator("table").last()).toBeVisible();
   });
 
   test("review grid shows LOCKED badge", async ({ page }) => {
     await page.waitForSelector("text=Individual Branch Sheet Review", { timeout: 10000 });
-    await page.locator("select").selectOption({ label: "Siddipet" });
+    await page.locator("select").selectOption({ label: "Branch 1" });
     await page.waitForSelector('[id^="cell-0-"]', { timeout: 15000 });
     await expect(page.locator("text=LOCKED").last()).toBeVisible();
+  });
+
+  test("History & Backup tab is accessible", async ({ page }) => {
+    await page.locator("button", { hasText: /history/i }).click();
+    await expect(page.locator("text=30-Day Report Archive")).toBeVisible({ timeout: 5000 });
   });
 
   test("Sign out returns to login", async ({ page }) => {
