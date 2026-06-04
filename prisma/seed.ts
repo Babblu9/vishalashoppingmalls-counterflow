@@ -17,11 +17,11 @@ async function main() {
 
   // Create Branches
   const branch1 = await prisma.branch.create({
-    data: { name: "Branch 1" },
+    data: { name: "Siddipet" },
   });
 
   const branch2 = await prisma.branch.create({
-    data: { name: "Branch 2" },
+    data: { name: "Siricilla" },
   });
 
   // Create Counters for Branch 1 (15 counters)

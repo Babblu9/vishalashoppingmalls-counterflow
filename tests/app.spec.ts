@@ -66,8 +66,8 @@ test.describe("2. Admin1 Dashboard", () => {
     await loginAs(page, "admin1", "admin123");
   });
 
-  test("header shows Report title", async ({ page }) => {
-    await expect(page.locator("h2")).toContainText(/Report/i, { timeout: 8000 });
+  test("header shows Siddipet Report title", async ({ page }) => {
+    await expect(page.locator("h2")).toContainText(/Siddipet/i, { timeout: 8000 });
   });
 
   test("grid has correct column headers", async ({ page }) => {
@@ -144,8 +144,8 @@ test.describe("3. Admin2 Dashboard", () => {
     await loginAs(page, "admin2", "admin123");
   });
 
-  test("header shows Branch 2 Report title", async ({ page }) => {
-    await expect(page.locator("h2")).toContainText(/Branch 2/i, { timeout: 8000 });
+  test("header shows Siricilla Report title", async ({ page }) => {
+    await expect(page.locator("h2")).toContainText(/Siricilla/i, { timeout: 8000 });
   });
 
   test("Branch 2 has 5 counter rows", async ({ page }) => {
@@ -193,8 +193,8 @@ test.describe("4. Super Admin Dashboard", () => {
 
   test("Branch Submissions Tracker shows both branches", async ({ page }) => {
     await expect(page.locator("text=Branch Submissions Tracker")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole("cell", { name: "Branch 1" })).toBeVisible();
-    await expect(page.getByRole("cell", { name: "Branch 2" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Siddipet" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Siricilla" })).toBeVisible();
   });
 
   test("Audit Logs tab works", async ({ page }) => {
@@ -208,16 +208,16 @@ test.describe("4. Super Admin Dashboard", () => {
     await expect(page.locator("text=admin2")).toBeVisible({ timeout: 5000 });
   });
 
-  test("can select Branch 1 for sheet review", async ({ page }) => {
+  test("can select Siddipet branch for sheet review", async ({ page }) => {
     await page.waitForSelector("text=Individual Branch Sheet Review", { timeout: 10000 });
-    await page.locator("select").selectOption({ label: "Branch 1" });
+    await page.locator("select").selectOption({ label: "Siddipet" });
     await page.waitForSelector('[id^="cell-0-"]', { timeout: 15000 });
     await expect(page.locator("table").last()).toBeVisible();
   });
 
   test("review grid shows LOCKED badge", async ({ page }) => {
     await page.waitForSelector("text=Individual Branch Sheet Review", { timeout: 10000 });
-    await page.locator("select").selectOption({ label: "Branch 1" });
+    await page.locator("select").selectOption({ label: "Siddipet" });
     await page.waitForSelector('[id^="cell-0-"]', { timeout: 15000 });
     await expect(page.locator("text=LOCKED").last()).toBeVisible();
   });
