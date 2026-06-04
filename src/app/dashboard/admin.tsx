@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   User,
   Download,
+  Building2,
 } from "lucide-react";
 import Image from "next/image";
 import ExcelGrid, { ReportEntryData } from "@/components/ExcelGrid";
@@ -135,6 +136,15 @@ export default function AdminDashboard({ session }: AdminDashboardProps) {
             </div>
           </div>
 
+          {/* Branch badge */}
+          <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-[#C9A227]/15 border border-[#C9A227]/30">
+            <Building2 size={14} className="text-[#C9A227] shrink-0" />
+            <div>
+              <p className="text-[9px] text-white/50 font-semibold uppercase tracking-widest">Branch</p>
+              <p className="text-sm font-extrabold text-[#C9A227] leading-tight">{session.branchName}</p>
+            </div>
+          </div>
+
           {/* Nav */}
           <nav className="space-y-1">
             <button className="w-full flex items-center gap-3 px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#8B1A1A] bg-[#C9A227] rounded-lg text-left shadow-md shadow-[#C9A227]/20">
@@ -152,7 +162,7 @@ export default function AdminDashboard({ session }: AdminDashboardProps) {
             </div>
             <div className="overflow-hidden">
               <p className="text-sm font-bold text-white truncate">{session.name}</p>
-              <p className="text-[10px] text-white/50 font-medium truncate">{session.branchName}</p>
+              <p className="text-xs text-[#C9A227]/80 font-semibold truncate">{session.branchName}</p>
             </div>
           </div>
           <button
