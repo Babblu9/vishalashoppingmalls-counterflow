@@ -14,6 +14,10 @@ export default async function DashboardPage() {
     return <SuperAdminDashboard session={session} />;
   }
 
-  // Admin users are guaranteed to have a branchId from our seed configuration
-  return <AdminDashboard session={session as any} />;
+  // ADMIN users must have a branchId — if missing, the account is misconfigured
+  if (!session.branchId) {
+    redirect("/login");
+  }
+
+  return <AdminDashboard session={{ ...session, branchId: session.branchId, branchName: session.branchName ?? "" }} />;
 }

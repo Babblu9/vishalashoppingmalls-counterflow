@@ -138,8 +138,7 @@ export async function GET(request: Request) {
       isEditable,
       editableWindowOpen,
     });
-  } catch (error) {
-    console.error("GET reports error:", error);
+  } catch {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
@@ -379,7 +378,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, report: savedReport });
   } catch (error: any) {
-    console.error("POST reports error:", error);
     // P2003 = foreign key constraint — stale session referencing deleted data
     if (error?.code === "P2003") {
       return NextResponse.json({ error: "Session data is stale. Please log in again." }, { status: 401 });

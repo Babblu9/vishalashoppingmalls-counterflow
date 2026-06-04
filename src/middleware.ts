@@ -1,20 +1,18 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { jwtVerify } from "jose/jwt/verify";
 
-// Simple base64 decoding helper for JWT in Edge environment
-function decodeJwt(token: string) {
+async function verifyJwt(token: string) {
   try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const payload = parts[1];
-    const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(decoded);
-  } catch (e) {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+    const { payload } = await jwtVerify(token, secret);
+    return payload;
+  } catch {
     return null;
   }
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const token = request.cookies.get("auth_token")?.value;
   const { pathname } = request.nextUrl;
 
@@ -34,11 +32,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Decoded payload
-  const session = decodeJwt(token);
+  // Verify token signature and decode payload
+  const session = await verifyJwt(token);
 
   if (!session) {
-    // Bad token, clear it and redirect to login
+    // Bad or tampered token — clear it and redirect to login
     const response = NextResponse.redirect(new URL("/login", request.url));
     response.cookies.delete("auth_token");
     return response;

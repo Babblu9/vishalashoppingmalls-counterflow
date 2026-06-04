@@ -28,8 +28,7 @@ export async function GET() {
         branchName: user.branch?.name || null,
       },
     });
-  } catch (error) {
-    console.error("Session API error:", error);
+  } catch {
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }

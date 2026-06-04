@@ -135,8 +135,7 @@ export async function GET(request: Request) {
       },
       alerts,
     });
-  } catch (error) {
-    console.error("Summary API error:", error);
+  } catch {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

@@ -19,8 +19,7 @@ export async function GET() {
     });
 
     return NextResponse.json({ branches });
-  } catch (error) {
-    console.error("GET branches error:", error);
+  } catch {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

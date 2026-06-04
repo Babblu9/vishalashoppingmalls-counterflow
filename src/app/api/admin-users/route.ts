@@ -30,8 +30,7 @@ export async function GET() {
         updatedAt: u.updatedAt,
       })),
     });
-  } catch (error) {
-    console.error("GET /api/admin-users error:", error);
+  } catch {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
@@ -105,8 +104,7 @@ export async function POST(request: Request) {
         branchName: user.branch?.name ?? null,
       },
     });
-  } catch (error) {
-    console.error("POST /api/admin-users error:", error);
+  } catch {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
@@ -202,8 +200,7 @@ export async function PUT(request: Request) {
         branchName: updated.branch?.name ?? null,
       },
     });
-  } catch (error) {
-    console.error("PUT /api/admin-users error:", error);
+  } catch {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
@@ -254,8 +251,7 @@ export async function DELETE(request: Request) {
     });
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("DELETE /api/admin-users error:", error);
+  } catch {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

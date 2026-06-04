@@ -1,10 +1,11 @@
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 model User {
@@ -96,7 +97,7 @@ model AuditLog {
   user          User         @relation(fields: [userId], references: [id])
   reportEntryId String?
   reportEntry   ReportEntry? @relation(fields: [reportEntryId], references: [id], onDelete: SetNull)
-  action        String       // "DRAFT_SAVE" | "SUBMIT" | "UNLOCK" | "EDIT"
+  action        String       // "LOGIN" | "LOGOUT" | "DRAFT_SAVE" | "SUBMIT" | "REPORT_SUBMIT" | "ADMIN_CREATE" | "ADMIN_EDIT" | "ADMIN_DELETE" | "DATA_CLEANUP"
   details       String       // JSON describing changed fields, e.g. {"cash": [5000, 5500]}
   ipAddress     String?
   userAgent     String?

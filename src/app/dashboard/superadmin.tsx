@@ -25,8 +25,6 @@ import {
   ArchiveRestore,
   Database,
   Trash,
-  CloudCog,
-  Info,
 } from "lucide-react";
 import Image from "next/image";
 import ExcelGrid, { ReportEntryData } from "@/components/ExcelGrid";
@@ -113,7 +111,7 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
   const [cleanupPreview, setCleanupPreview] = useState<{ reports: number; auditLogs: number } | null>(null);
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<{ reports: number; auditLogs: number } | null>(null);
-  const [showCloudGuide, setShowCloudGuide] = useState(false);
+  
 
   useEffect(() => { setSelectedDate(getBusinessDate(new Date())); }, []);
 
@@ -122,7 +120,7 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
       try {
         const res = await fetch("/api/branches");
         if (res.ok) { const d = await res.json(); setBranches(d.branches); }
-      } catch (e) { console.error(e); }
+      } catch { /* non-critical */ }
     };
     fetchBranches();
   }, []);
@@ -156,7 +154,7 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
           setReviewGridData(d.report.entries);
           setReviewReportStatus(d.report.status);
         }
-      } catch (e) { console.error(e); }
+      } catch { /* non-critical */ }
     };
     fetchReviewSheet();
   }, [selectedBranchId, selectedDate]);
@@ -166,7 +164,7 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
       await fetch("/api/auth/logout", { method: "POST" });
       router.push("/login");
       router.refresh();
-    } catch (e) { console.error(e); }
+    } catch { router.push("/login"); }
   };
 
   // Admin users helpers
@@ -320,10 +318,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
 
   const getBranchLabel = (branchId: string) => branches.find(b => b.id === branchId)?.name ?? "System";
 
-  // Cloud guide code snippets — defined as variables to avoid SWC JSX parser issues with curly braces in template literals
-  const codeEnvUrl = 'DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=require"';
-  const codePrismaSchema = 'datasource db {\n  provider = "postgresql"\n  url      = env("DATABASE_URL")\n}';
-  const codeMigrate = 'npx prisma migrate deploy\nnpx prisma db seed';
 
   return (
     <div className="flex min-h-screen bg-[#FDF6EE] text-[#1A0A0A]">
@@ -693,13 +687,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                     Last 30 days of report data. Download full backups or clean up expired data.
                   </p>
                 </div>
-                <button
-                  onClick={() => setShowCloudGuide(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1D4ED8]/10 hover:bg-[#1D4ED8]/20 border border-[#1D4ED8]/30 text-xs font-bold text-[#1D4ED8] transition-all cursor-pointer"
-                >
-                  <CloudCog size={14} />
-                  Cloud Database Setup
-                </button>
               </div>
 
               {backupError && (
@@ -918,106 +905,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
         </div>
       )}
 
-      {/* Cloud DB Guide Modal */}
-      {showCloudGuide && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-[#E8D5B0] max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-[#E8D5B0] shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-lg bg-[#1D4ED8]/10 flex items-center justify-center">
-                  <CloudCog size={18} className="text-[#1D4ED8]" />
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-[#1A0A0A]">Cloud Database Setup</h3>
-                  <p className="text-xs text-[#9A7E6A]">Migrate from local SQLite to a cloud PostgreSQL database</p>
-                </div>
-              </div>
-              <button onClick={() => setShowCloudGuide(false)} className="p-1.5 rounded-lg hover:bg-[#FDF6EE] text-[#9A7E6A] cursor-pointer">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto space-y-6 text-sm">
-
-              {/* Step 1 */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="h-6 w-6 rounded-full bg-[#1D4ED8] text-white text-xs font-bold flex items-center justify-center shrink-0">1</span>
-                  <h4 className="font-bold text-[#1A0A0A]">Choose a Cloud PostgreSQL Provider</h4>
-                </div>
-                <p className="text-xs text-[#5C4A3A] ml-8">Any of these free-tier options work:</p>
-                <div className="ml-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    { name: "Neon", url: "https://neon.tech", note: "Free tier · Serverless · Recommended" },
-                    { name: "Supabase", url: "https://supabase.com", note: "Free tier · Includes UI dashboard" },
-                    { name: "Railway", url: "https://railway.app", note: "Free tier · Easy deploy" },
-                  ].map((p) => (
-                    <div key={p.name} className="p-3 rounded-lg border border-[#E8D5B0] bg-[#FDF6EE]">
-                      <p className="font-bold text-[#1A0A0A] text-xs">{p.name}</p>
-                      <p className="text-[10px] text-[#9A7E6A] mt-0.5">{p.note}</p>
-                      <p className="text-[10px] text-[#1D4ED8] mt-1 break-all">{p.url}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Step 2 */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="h-6 w-6 rounded-full bg-[#1D4ED8] text-white text-xs font-bold flex items-center justify-center shrink-0">2</span>
-                  <h4 className="font-bold text-[#1A0A0A]">Update <code className="bg-[#F1F5F9] px-1 py-0.5 rounded text-xs">.env</code> file</h4>
-                </div>
-                <p className="text-xs text-[#5C4A3A] ml-8">Create or update <code className="bg-[#F1F5F9] px-1 rounded">.env</code> in the project root:</p>
-                <pre className="ml-8 p-3 bg-[#1E293B] text-[#E2E8F0] rounded-lg text-xs overflow-x-auto">{codeEnvUrl}</pre>
-                <p className="text-[10px] text-[#9A7E6A] ml-8">Replace with the connection string from your cloud provider dashboard.</p>
-              </div>
-
-              {/* Step 3 */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="h-6 w-6 rounded-full bg-[#1D4ED8] text-white text-xs font-bold flex items-center justify-center shrink-0">3</span>
-                  <h4 className="font-bold text-[#1A0A0A]">Update <code className="bg-[#F1F5F9] px-1 py-0.5 rounded text-xs">prisma/schema.prisma</code></h4>
-                </div>
-                <p className="text-xs text-[#5C4A3A] ml-8">Change the datasource provider from <code className="bg-[#F1F5F9] px-1 rounded">sqlite</code> to <code className="bg-[#F1F5F9] px-1 rounded">postgresql</code>:</p>
-                <pre className="ml-8 p-3 bg-[#1E293B] text-[#E2E8F0] rounded-lg text-xs overflow-x-auto">{codePrismaSchema}</pre>
-              </div>
-
-              {/* Step 4 */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="h-6 w-6 rounded-full bg-[#1D4ED8] text-white text-xs font-bold flex items-center justify-center shrink-0">4</span>
-                  <h4 className="font-bold text-[#1A0A0A]">Run migrations & seed</h4>
-                </div>
-                <p className="text-xs text-[#5C4A3A] ml-8">Run these commands in the terminal:</p>
-                <pre className="ml-8 p-3 bg-[#1E293B] text-[#E2E8F0] rounded-lg text-xs overflow-x-auto">{codeMigrate}</pre>
-              </div>
-
-              {/* Step 5 */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="h-6 w-6 rounded-full bg-[#1D4ED8] text-white text-xs font-bold flex items-center justify-center shrink-0">5</span>
-                  <h4 className="font-bold text-[#1A0A0A]">Deploy & verify</h4>
-                </div>
-                <p className="text-xs text-[#5C4A3A] ml-8">
-                  Restart the application. If deploying to Vercel or another host, add the <code className="bg-[#F1F5F9] px-1 rounded">DATABASE_URL</code> environment variable in the platform dashboard. Your data will now persist in the cloud automatically — no SQLite file needed.
-                </p>
-              </div>
-
-              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs ml-0">
-                <Info size={13} className="shrink-0 mt-0.5" />
-                <span>The existing local <code className="bg-amber-100 px-1 rounded">prisma/dev.db</code> data will <strong>not</strong> be automatically migrated. Export backups from this portal before switching databases if you need to preserve existing records.</span>
-              </div>
-            </div>
-            <div className="px-6 py-4 border-t border-[#E8D5B0] shrink-0">
-              <button
-                onClick={() => setShowCloudGuide(false)}
-                className="w-full py-2.5 rounded-lg bg-[#1D4ED8] hover:bg-[#1E40AF] text-xs font-bold text-white transition-all cursor-pointer"
-              >
-                Got it, close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-[#E8D5B0] p-6 space-y-4">

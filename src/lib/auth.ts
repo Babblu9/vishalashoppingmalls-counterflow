@@ -16,6 +16,7 @@ export interface SessionPayload {
   name: string;
   role: string;
   branchId: string | null;
+  branchName: string | null;
 }
 
 export function signToken(payload: SessionPayload): string {

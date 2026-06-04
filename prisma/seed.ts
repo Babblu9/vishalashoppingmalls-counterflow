@@ -1,11 +1,12 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../src/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
+import "dotenv/config";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log("Starting seed process...");
-
   // Clean existing data
   await prisma.auditLog.deleteMany({});
   await prisma.reportEntry.deleteMany({});
@@ -13,8 +14,6 @@ async function main() {
   await prisma.user.deleteMany({});
   await prisma.counter.deleteMany({});
   await prisma.branch.deleteMany({});
-
-  console.log("Database cleared.");
 
   // Create Branches
   const branch1 = await prisma.branch.create({
@@ -24,8 +23,6 @@ async function main() {
   const branch2 = await prisma.branch.create({
     data: { name: "Branch 2" },
   });
-
-  console.log("Created branches: Branch 1 & Branch 2");
 
   // Create Counters for Branch 1 (15 counters)
   for (let i = 1; i <= 15; i++) {
@@ -46,8 +43,6 @@ async function main() {
       },
     });
   }
-
-  console.log("Created 20 counters (15 for Branch 1, 5 for Branch 2)");
 
   // Hash passwords
   const adminPasswordHash = bcrypt.hashSync("admin123", 10);
@@ -85,12 +80,6 @@ async function main() {
       passwordHash: superPasswordHash,
     },
   });
-
-  console.log("Created users:");
-  console.log("- admin1 (Branch 1 Admin) - password: admin123");
-  console.log("- admin2 (Branch 2 Admin) - password: admin123");
-  console.log("- superadmin (Super Admin) - password: superadmin123");
-  console.log("Seed process completed successfully.");
 }
 
 main()

@@ -14,16 +14,14 @@ export async function POST() {
             details: JSON.stringify({ username: session.username }),
           },
         });
-      } catch (auditError) {
+      } catch {
         // Audit logging is non-critical; proceed with logout even if it fails
-        console.warn("Logout audit log skipped (stale session or DB mismatch):", (auditError as any)?.code);
       }
     }
 
     await clearSessionCookie();
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Logout API error:", error);
+  } catch {
     // Still clear the cookie so the user can get out
     await clearSessionCookie().catch(() => {});
     return NextResponse.json(

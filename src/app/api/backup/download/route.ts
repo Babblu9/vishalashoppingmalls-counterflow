@@ -322,8 +322,7 @@ export async function GET(request: Request) {
         "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
-  } catch (err) {
-    console.error("Backup download error:", err);
+  } catch {
     return new Response("Internal Server Error", { status: 500 });
   }
 }

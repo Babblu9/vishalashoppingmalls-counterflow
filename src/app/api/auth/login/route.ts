@@ -46,6 +46,7 @@ export async function POST(request: Request) {
       name: user.name,
       role: user.role,
       branchId: user.branchId,
+      branchName: user.branch?.name || null,
     };
 
     await setSessionCookie(sessionPayload);
@@ -72,8 +73,7 @@ export async function POST(request: Request) {
         branchName: user.branch?.name || null,
       },
     });
-  } catch (error) {
-    console.error("Login API error:", error);
+  } catch {
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }

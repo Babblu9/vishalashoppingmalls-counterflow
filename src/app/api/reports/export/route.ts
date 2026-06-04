@@ -410,8 +410,7 @@ export async function GET(request: Request) {
         "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
-  } catch (error) {
-    console.error("Export Excel API error:", error);
+  } catch {
     return new Response("Internal Server Error", { status: 500 });
   }
 }

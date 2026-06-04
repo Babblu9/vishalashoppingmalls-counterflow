@@ -118,7 +118,7 @@ export default function AdminDashboard({ session }: AdminDashboardProps) {
       await fetch("/api/auth/logout", { method: "POST" });
       router.push("/login");
       router.refresh();
-    } catch (e) { console.error("Logout error:", e); }
+    } catch { router.push("/login"); }
   };
 
   return (
