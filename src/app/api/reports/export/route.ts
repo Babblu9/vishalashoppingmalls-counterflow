@@ -60,8 +60,9 @@ export async function GET(request: Request) {
       entriesData = report.entries
         .sort((a, b) => counterSort(a.counter.name, b.counter.name))
         .map((entry) => {
+        // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED)
         const systemTotal =
-          entry.cash + entry.gpay + entry.card + entry.counterFlow + entry.collectedDue;
+          entry.cash + entry.gpay + entry.card + entry.counterFlow + entry.totalDue;
         const difference = entry.manualTotal - systemTotal;
         return {
           counterName: entry.counter.name,
@@ -71,9 +72,14 @@ export async function GET(request: Request) {
           totalDue: entry.totalDue,
           collectedDue: entry.collectedDue,
           counterFlow: entry.counterFlow,
+          // Due Created details
           dueBillNo: entry.dueBillNo || "",
           dueBillName: entry.dueBillName || "",
-          dueBillAmount: entry.dueBillAmount,
+          dueBillMobile: entry.dueBillMobile || "",
+          // Due Collected details
+          collectedDueBillNo: entry.collectedDueBillNo || "",
+          collectedDueBillName: entry.collectedDueBillName || "",
+          collectedDueBillMobile: entry.collectedDueBillMobile || "",
           systemTotal,
           manualTotal: entry.manualTotal,
           difference,
@@ -88,18 +94,11 @@ export async function GET(request: Request) {
         .sort((a, b) => counterSort(a.name, b.name))
         .map((counter) => ({
         counterName: counter.name,
-        cash: 0,
-        gpay: 0,
-        card: 0,
-        totalDue: 0,
-        collectedDue: 0,
-        counterFlow: 0,
-        dueBillNo: "",
-        dueBillName: "",
-        dueBillAmount: 0,
-        systemTotal: 0,
-        manualTotal: 0,
-        difference: 0,
+        cash: 0, gpay: 0, card: 0,
+        totalDue: 0, collectedDue: 0, counterFlow: 0,
+        dueBillNo: "", dueBillName: "", dueBillMobile: "",
+        collectedDueBillNo: "", collectedDueBillName: "", collectedDueBillMobile: "",
+        systemTotal: 0, manualTotal: 0, difference: 0,
       }));
     }
 
@@ -184,8 +183,7 @@ export async function GET(request: Request) {
     });
 
     // ── Right section headers ────────────────────────────────────────
-    // Col K: SYSTEM COUNTER block | Col L: values
-    // Col N: DUE BILL block
+    // Col K–L: SYSTEM COUNTER block
     ws.mergeCells("K5:L5");
     const scHeader = ws.getCell("K5");
     scHeader.value = "SYSTEM COUNTER";
@@ -194,19 +192,39 @@ export async function GET(request: Request) {
     scHeader.alignment = { vertical: "middle", horizontal: "center" };
     scHeader.border = allBorders("334155");
 
+    // Col N–P: DUE CREATED DETAILS block
     ws.mergeCells("N5:P5");
-    const dbHeader = ws.getCell("N5");
-    dbHeader.value = "DUE BILL";
-    dbHeader.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
-    dbHeader.fill = headerFill("92400E");
-    dbHeader.alignment = { vertical: "middle", horizontal: "center" };
-    dbHeader.border = allBorders("334155");
+    const dcHeader = ws.getCell("N5");
+    dcHeader.value = "DUE CREATED DETAILS";
+    dcHeader.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
+    dcHeader.fill = headerFill("1B8A7A");
+    dcHeader.alignment = { vertical: "middle", horizontal: "center" };
+    dcHeader.border = allBorders("334155");
 
-    // Sub-headers for DUE BILL cols
+    // Col R–T: DUE COLLECTED DETAILS block
+    ws.mergeCells("R5:T5");
+    const dlHeader = ws.getCell("R5");
+    dlHeader.value = "DUE COLLECTED DETAILS";
+    dlHeader.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
+    dlHeader.fill = headerFill("92400E");
+    dlHeader.alignment = { vertical: "middle", horizontal: "center" };
+    dlHeader.border = allBorders("334155");
+
+    // Sub-headers row 6
     ws.getRow(6).height = 18;
+    // Due Created sub-headers (N6, O6, P6)
     ["N6", "O6", "P6"].forEach((addr, i) => {
       const cell = ws.getCell(addr);
-      cell.value = ["BILL NO", "NAME", "AMOUNT"][i];
+      cell.value = ["BILL NO", "NAME", "MOBILE"][i];
+      cell.font = { name: "Segoe UI", size: 8, bold: true, color: { argb: "1F2937" } };
+      cell.fill = headerFill("CCFBF1");
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.border = allBorders("1B8A7A");
+    });
+    // Due Collected sub-headers (R6, S6, T6)
+    ["R6", "S6", "T6"].forEach((addr, i) => {
+      const cell = ws.getCell(addr);
+      cell.value = ["BILL NO", "NAME", "MOBILE"][i];
       cell.font = { name: "Segoe UI", size: 8, bold: true, color: { argb: "1F2937" } };
       cell.fill = headerFill("FEF3C7");
       cell.alignment = { vertical: "middle", horizontal: "center" };
@@ -230,13 +248,12 @@ export async function GET(request: Request) {
       ws.getCell(`E${r}`).value = entry.totalDue;
       ws.getCell(`F${r}`).value = entry.collectedDue;
       ws.getCell(`G${r}`).value = entry.counterFlow;
-
-      // H: C.T Physical (manual total entered by user)
       ws.getCell(`H${r}`).value = entry.manualTotal;
 
-      // I: +/- difference = ABS(C.T - system total)
+      // I: +/- = ABS(C.T - system total)
+      // system total = B+C+D+E+G  (cash+gpay+card+totalDue+counterFlow; col F = collectedDue is NOT in G total)
       ws.getCell(`I${r}`).value = {
-        formula: `ABS(H${r}-(B${r}+C${r}+D${r}+F${r}+G${r}))`,
+        formula: `ABS(H${r}-(B${r}+C${r}+D${r}+E${r}+G${r}))`,
         result: Math.abs(entry.difference),
       };
 
@@ -251,28 +268,34 @@ export async function GET(request: Request) {
           cell.alignment = { vertical: "middle", horizontal: "right" };
           cell.numFmt = rupee;
         }
-        // Highlight difference cell (col I = +/-)
         if (col === "I" && hasDiff) {
           cell.fill = headerFill("FEE2E2");
           cell.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "EF4444" } };
         }
       }
 
-      // Due bill columns N-P for this row
+      // Due Created detail columns N–P
       ws.getCell(`N${r}`).value = entry.dueBillNo || "";
       ws.getCell(`O${r}`).value = entry.dueBillName || "";
-      ws.getCell(`P${r}`).value = entry.dueBillAmount || 0;
+      ws.getCell(`P${r}`).value = entry.dueBillMobile || "";
 
       for (const col of ["N", "O", "P"]) {
         const cell = ws.getCell(`${col}${r}`);
+        cell.border = allBorders("1B8A7A");
+        cell.font = { name: "Segoe UI", size: 9 };
+        cell.alignment = { vertical: "middle", horizontal: "left" };
+      }
+
+      // Due Collected detail columns R–T
+      ws.getCell(`R${r}`).value = entry.collectedDueBillNo || "";
+      ws.getCell(`S${r}`).value = entry.collectedDueBillName || "";
+      ws.getCell(`T${r}`).value = entry.collectedDueBillMobile || "";
+
+      for (const col of ["R", "S", "T"]) {
+        const cell = ws.getCell(`${col}${r}`);
         cell.border = allBorders("D97706");
         cell.font = { name: "Segoe UI", size: 9 };
-        if (col === "P") {
-          cell.alignment = { vertical: "middle", horizontal: "right" };
-          cell.numFmt = rupee;
-        } else {
-          cell.alignment = { vertical: "middle", horizontal: "left" };
-        }
+        cell.alignment = { vertical: "middle", horizontal: "left" };
       }
     });
 
@@ -302,28 +325,16 @@ export async function GET(request: Request) {
       };
     }
 
-    // Due bill total
-    ws.getCell(`N${gtRow}`).value = "TOTAL";
-    ws.getCell(`N${gtRow}`).font = { name: "Segoe UI", size: 9, bold: true };
-    ws.getCell(`P${gtRow}`).value = { formula: `SUM(P${dataStart}:P${gtRow - 1})` };
-    ws.getCell(`P${gtRow}`).numFmt = rupee;
-    ws.getCell(`P${gtRow}`).font = { name: "Segoe UI", size: 9, bold: true };
-    ws.getCell(`P${gtRow}`).alignment = { vertical: "middle", horizontal: "right" };
-
-    for (const col of ["N", "O", "P"]) {
-      const cell = ws.getCell(`${col}${gtRow}`);
-      cell.fill = headerFill("FEF3C7");
-      cell.border = allBorders("D97706");
-    }
-
     // ── SYSTEM COUNTER block (col K:L, rows 7 onwards) ───────────────
+    // G TOTAL = CASH + G.PAY + CARD + COUNTER FLOW + DUE CREATED
+    // Columns: B=CASH, C=GPAY, D=CARD, E=DUE Created, G=COUNTER FLOW
     const scLabels = [
-      { label: "CASH",          formula: `SUM(B${dataStart}:B${gtRow - 1})` },
-      { label: "G.PAY",         formula: `SUM(C${dataStart}:C${gtRow - 1})` },
-      { label: "CARD",          formula: `SUM(D${dataStart}:D${gtRow - 1})` },
-      { label: "DUO (Due Col.)", formula: `SUM(F${dataStart}:F${gtRow - 1})` },
-      { label: "ADV (Bill Amt)", formula: `SUM(P${dataStart}:P${gtRow - 1})` },
-      { label: "MANUAL",        formula: `SUM(H${dataStart}:H${gtRow - 1})` },
+      { label: "CASH",           formula: `SUM(B${dataStart}:B${gtRow - 1})` },
+      { label: "G.PAY",          formula: `SUM(C${dataStart}:C${gtRow - 1})` },
+      { label: "CARD",           formula: `SUM(D${dataStart}:D${gtRow - 1})` },
+      { label: "COUNTER FLOW",   formula: `SUM(G${dataStart}:G${gtRow - 1})` },
+      { label: "DUE CREATED",    formula: `SUM(E${dataStart}:E${gtRow - 1})` },
+      { label: "MANUAL",         formula: `SUM(H${dataStart}:H${gtRow - 1})` },
     ];
 
     scLabels.forEach(({ label, formula }, i) => {
@@ -343,17 +354,15 @@ export async function GET(request: Request) {
     });
 
     // G TOTAL row in system counter
-    const gtScRow = dataStart + scLabels.length;
+    // G TOTAL = CASH + GPAY + CARD + COUNTER FLOW + DUE CREATED = L[0]+L[1]+L[2]+L[3]+L[4]
+    const gtScRow = dataStart + scLabels.length; // row after the 6 label rows (MANUAL is at index 5 = dataStart+5)
     ws.getCell(`K${gtScRow}`).value = "G TOTAL";
     ws.getCell(`K${gtScRow}`).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
     ws.getCell(`K${gtScRow}`).fill = headerFill("1D4ED8");
     ws.getCell(`K${gtScRow}`).border = allBorders("1D4ED8");
     ws.getCell(`K${gtScRow}`).alignment = { vertical: "middle" };
 
-    ws.getCell(`L${gtScRow}`).value = {
-      formula: `SUM(L${dataStart}:L${dataStart + scLabels.length - 1})-L${dataStart + 5}`, // sum minus MANUAL row (it's not part of system total)
-    };
-    // Actually G TOTAL = CASH+GPAY+CARD+DUO+ADV (L7:L11) not MANUAL
+    // G TOTAL = sum of indices 0–4 (CASH, GPAY, CARD, COUNTER FLOW, DUE CREATED) — skip MANUAL at index 5
     ws.getCell(`L${gtScRow}`).value = {
       formula: `L${dataStart}+L${dataStart+1}+L${dataStart+2}+L${dataStart+3}+L${dataStart+4}`,
     };
@@ -363,7 +372,7 @@ export async function GET(request: Request) {
     ws.getCell(`L${gtScRow}`).numFmt = rupee;
     ws.getCell(`L${gtScRow}`).alignment = { vertical: "middle", horizontal: "right" };
 
-    // DIFFERENCE row
+    // DIFFERENCE row = ABS(MANUAL - G TOTAL)
     const diffScRow = gtScRow + 1;
     ws.getCell(`K${diffScRow}`).value = "DIFFERENCE";
     ws.getCell(`K${diffScRow}`).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
@@ -394,9 +403,13 @@ export async function GET(request: Request) {
     ws.getColumn("K").width = 18;  // SC labels
     ws.getColumn("L").width = 14;  // SC values
     ws.getColumn("M").width = 3;   // spacer
-    ws.getColumn("N").width = 14;  // Bill No
-    ws.getColumn("O").width = 20;  // Name
-    ws.getColumn("P").width = 14;  // Amount
+    ws.getColumn("N").width = 14;  // Created Bill No
+    ws.getColumn("O").width = 20;  // Created Name
+    ws.getColumn("P").width = 14;  // Created Mobile
+    ws.getColumn("Q").width = 3;   // spacer
+    ws.getColumn("R").width = 14;  // Collected Bill No
+    ws.getColumn("S").width = 20;  // Collected Name
+    ws.getColumn("T").width = 14;  // Collected Mobile
 
     // ── Build buffer and respond ──────────────────────────────────────
     const buffer = await workbook.xlsx.writeBuffer();

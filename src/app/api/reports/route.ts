@@ -73,6 +73,10 @@ export async function GET(request: Request) {
         dueBillNo: null,
         dueBillName: null,
         dueBillAmount: 0,
+        dueBillMobile: null,
+        collectedDueBillNo: null,
+        collectedDueBillName: null,
+        collectedDueBillMobile: null,
         manualTotal: 0,
         systemTotal: 0,
         difference: 0,
@@ -103,7 +107,7 @@ export async function GET(request: Request) {
         entry.gpay +
         entry.card +
         entry.counterFlow +
-        entry.collectedDue;
+        entry.totalDue;
       const difference = Math.abs(entry.manualTotal - systemTotal);
       return {
         id: entry.id,
@@ -118,6 +122,10 @@ export async function GET(request: Request) {
         dueBillNo: entry.dueBillNo,
         dueBillName: entry.dueBillName,
         dueBillAmount: entry.dueBillAmount,
+        dueBillMobile: entry.dueBillMobile,
+        collectedDueBillNo: entry.collectedDueBillNo,
+        collectedDueBillName: entry.collectedDueBillName,
+        collectedDueBillMobile: entry.collectedDueBillMobile,
         manualTotal: entry.manualTotal,
         systemTotal,
         difference,
@@ -246,9 +254,14 @@ export async function POST(request: Request) {
         const dueBillNo = entry.dueBillNo || null;
         const dueBillName = entry.dueBillName || null;
         const dueBillAmount = Number(entry.dueBillAmount) || 0;
+        const dueBillMobile = entry.dueBillMobile || null;
+        const collectedDueBillNo = entry.collectedDueBillNo || null;
+        const collectedDueBillName = entry.collectedDueBillName || null;
+        const collectedDueBillMobile = entry.collectedDueBillMobile || null;
         const manualTotal = Number(entry.manualTotal) || 0;
 
-        const systemTotal = cash + gpay + card + counterFlow + collectedDue;
+        // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED)
+        const systemTotal = cash + gpay + card + counterFlow + totalDue;
         const difference = manualTotal - systemTotal;
         const grandTotal = systemTotal;
 
@@ -276,6 +289,10 @@ export async function POST(request: Request) {
             dueBillNo,
             dueBillName,
             dueBillAmount,
+            dueBillMobile,
+            collectedDueBillNo,
+            collectedDueBillName,
+            collectedDueBillMobile,
             manualTotal,
             systemTotal,
             difference,
@@ -291,6 +308,10 @@ export async function POST(request: Request) {
             dueBillNo,
             dueBillName,
             dueBillAmount,
+            dueBillMobile,
+            collectedDueBillNo,
+            collectedDueBillName,
+            collectedDueBillMobile,
             manualTotal,
             systemTotal,
             difference,
@@ -309,6 +330,10 @@ export async function POST(request: Request) {
             "totalDue",
             "collectedDue",
             "dueBillAmount",
+            "dueBillMobile",
+            "collectedDueBillNo",
+            "collectedDueBillName",
+            "collectedDueBillMobile",
             "manualTotal",
           ];
 
@@ -349,11 +374,11 @@ export async function POST(request: Request) {
               reportEntryId: upsertedEntry.id,
               action: status === "SUBMITTED" ? "SUBMIT" : "DRAFT_SAVE",
               details: JSON.stringify({
-                counterName: counter?.name || "Unknown",
-                businessDate,
-                message: "Created initial daily report entry",
-                values: { cash, gpay, card, counterFlow, totalDue, collectedDue, dueBillAmount, manualTotal },
-              }),
+                  counterName: counter?.name || "Unknown",
+                  businessDate,
+                  message: "Created initial daily report entry",
+                  values: { cash, gpay, card, counterFlow, totalDue, collectedDue, dueBillAmount, dueBillMobile, collectedDueBillNo, collectedDueBillName, collectedDueBillMobile, manualTotal },
+                }),
             },
           });
         }

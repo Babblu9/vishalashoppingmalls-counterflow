@@ -34,8 +34,8 @@ async function main() {
     });
   }
 
-  // Create Counters for Branch 2 (5 counters)
-  for (let i = 1; i <= 5; i++) {
+  // Create Counters for Branch 2 (8 counters)
+  for (let i = 1; i <= 8; i++) {
     await prisma.counter.create({
       data: {
         branchId: branch2.id,

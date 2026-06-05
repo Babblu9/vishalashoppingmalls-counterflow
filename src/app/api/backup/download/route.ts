@@ -23,11 +23,11 @@ export async function GET(request: Request) {
       return new Response("Invalid date format. Use YYYY-MM-DD", { status: 400 });
     }
 
-    // Validate date is within 30-day window
+    // Validate date is within 45-day window
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 30);
+    cutoff.setDate(cutoff.getDate() - 45);
     if (dateStr < cutoff.toISOString().split("T")[0]) {
-      return new Response("Date is outside the 30-day retention window", { status: 400 });
+      return new Response("Date is outside the 45-day retention window", { status: 400 });
     }
 
     // Fetch all branches + all reports for this date in one query (eliminates N+1)
@@ -105,7 +105,7 @@ export async function GET(request: Request) {
       const ws = workbook.addWorksheet(branch.name.substring(0, 31));
       ws.views = [{ showGridLines: true }];
 
-      // Title rows (reuse same style as single export)
+      // Title rows
       ws.mergeCells("A1:L1");
       const bt = ws.getCell("A1");
       bt.value = "VISHALA SHOPPING MALL";
@@ -162,14 +162,27 @@ export async function GET(request: Request) {
       scHeader.fill = headerFill("1D4ED8"); scHeader.alignment = { vertical: "middle", horizontal: "center" };
 
       ws.mergeCells("N5:P5");
-      const dbHeader = ws.getCell("N5");
-      dbHeader.value = "DUE BILL"; dbHeader.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
-      dbHeader.fill = headerFill("92400E"); dbHeader.alignment = { vertical: "middle", horizontal: "center" };
+      const dcHeader = ws.getCell("N5");
+      dcHeader.value = "DUE CREATED DETAILS"; dcHeader.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
+      dcHeader.fill = headerFill("1B8A7A"); dcHeader.alignment = { vertical: "middle", horizontal: "center" };
+
+      ws.mergeCells("R5:T5");
+      const dlHeader = ws.getCell("R5");
+      dlHeader.value = "DUE COLLECTED DETAILS"; dlHeader.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
+      dlHeader.fill = headerFill("92400E"); dlHeader.alignment = { vertical: "middle", horizontal: "center" };
 
       ws.getRow(6).height = 18;
       ["N6", "O6", "P6"].forEach((addr, i) => {
         const cell = ws.getCell(addr);
-        cell.value = ["BILL NO", "NAME", "AMOUNT"][i];
+        cell.value = ["BILL NO", "NAME", "MOBILE"][i];
+        cell.font = { name: "Segoe UI", size: 8, bold: true, color: { argb: "1F2937" } };
+        cell.fill = headerFill("CCFBF1");
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+        cell.border = allBorders();
+      });
+      ["R6", "S6", "T6"].forEach((addr, i) => {
+        const cell = ws.getCell(addr);
+        cell.value = ["BILL NO", "NAME", "MOBILE"][i];
         cell.font = { name: "Segoe UI", size: 8, bold: true, color: { argb: "1F2937" } };
         cell.fill = headerFill("FEF3C7");
         cell.alignment = { vertical: "middle", horizontal: "center" };
@@ -186,18 +199,20 @@ export async function GET(request: Request) {
             cash: e.cash, gpay: e.gpay, card: e.card,
             totalDue: e.totalDue, collectedDue: e.collectedDue,
             counterFlow: e.counterFlow,
-            dueBillNo: e.dueBillNo || "", dueBillName: e.dueBillName || "",
-            dueBillAmount: e.dueBillAmount,
-            systemTotal: e.cash + e.gpay + e.card + e.counterFlow + e.collectedDue,
+            dueBillNo: e.dueBillNo || "", dueBillName: e.dueBillName || "", dueBillMobile: e.dueBillMobile || "",
+            collectedDueBillNo: e.collectedDueBillNo || "", collectedDueBillName: e.collectedDueBillName || "", collectedDueBillMobile: e.collectedDueBillMobile || "",
+            // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED)
+            systemTotal: e.cash + e.gpay + e.card + e.counterFlow + e.totalDue,
             manualTotal: e.manualTotal,
-            difference: e.manualTotal - (e.cash + e.gpay + e.card + e.counterFlow + e.collectedDue),
+            difference: e.manualTotal - (e.cash + e.gpay + e.card + e.counterFlow + e.totalDue),
           }));
       } else {
         const counters = (countersByBranch.get(branch.id) ?? []).sort((a, b) => counterSort(a.name, b.name));
         entriesData = counters.map((c) => ({
           counterName: c.name, cash: 0, gpay: 0, card: 0,
           totalDue: 0, collectedDue: 0, counterFlow: 0,
-          dueBillNo: "", dueBillName: "", dueBillAmount: 0,
+          dueBillNo: "", dueBillName: "", dueBillMobile: "",
+          collectedDueBillNo: "", collectedDueBillName: "", collectedDueBillMobile: "",
           systemTotal: 0, manualTotal: 0, difference: 0,
         }));
       }
@@ -215,7 +230,8 @@ export async function GET(request: Request) {
         ws.getCell(`F${r}`).value = entry.collectedDue;
         ws.getCell(`G${r}`).value = entry.counterFlow;
         ws.getCell(`H${r}`).value = entry.manualTotal;
-        ws.getCell(`I${r}`).value = { formula: `ABS(H${r}-(B${r}+C${r}+D${r}+F${r}+G${r}))`, result: Math.abs(entry.difference) };
+        // +/- formula: ABS(H - (B+C+D+E+G))  — E=totalDue in G total, F=collectedDue excluded
+        ws.getCell(`I${r}`).value = { formula: `ABS(H${r}-(B${r}+C${r}+D${r}+E${r}+G${r}))`, result: Math.abs(entry.difference) };
         for (const col of ["A", "B", "C", "D", "E", "F", "G", "H", "I"]) {
           const cell = ws.getCell(`${col}${r}`);
           cell.border = allBorders();
@@ -224,15 +240,23 @@ export async function GET(request: Request) {
           if (col !== "A") cell.numFmt = rupee;
           if (col === "I" && hasDiff) { cell.fill = headerFill("FEE2E2"); cell.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "EF4444" } }; }
         }
+        // Due Created details
         ws.getCell(`N${r}`).value = entry.dueBillNo;
         ws.getCell(`O${r}`).value = entry.dueBillName;
-        ws.getCell(`P${r}`).value = entry.dueBillAmount;
+        ws.getCell(`P${r}`).value = entry.dueBillMobile;
         for (const col of ["N", "O", "P"]) {
-          const cell = ws.getCell(`${col}${r}`);
-          cell.border = allBorders();
-          cell.font = { name: "Segoe UI", size: 9 };
-          if (col === "P") { cell.alignment = { vertical: "middle", horizontal: "right" }; cell.numFmt = rupee; }
-          else cell.alignment = { vertical: "middle", horizontal: "left" };
+          ws.getCell(`${col}${r}`).border = allBorders();
+          ws.getCell(`${col}${r}`).font = { name: "Segoe UI", size: 9 };
+          ws.getCell(`${col}${r}`).alignment = { vertical: "middle", horizontal: "left" };
+        }
+        // Due Collected details
+        ws.getCell(`R${r}`).value = entry.collectedDueBillNo;
+        ws.getCell(`S${r}`).value = entry.collectedDueBillName;
+        ws.getCell(`T${r}`).value = entry.collectedDueBillMobile;
+        for (const col of ["R", "S", "T"]) {
+          ws.getCell(`${col}${r}`).border = allBorders();
+          ws.getCell(`${col}${r}`).font = { name: "Segoe UI", size: 9 };
+          ws.getCell(`${col}${r}`).alignment = { vertical: "middle", horizontal: "left" };
         }
       });
 
@@ -254,12 +278,63 @@ export async function GET(request: Request) {
         cell.border = { top: { style: "medium", color: { argb: "1E293B" } }, bottom: { style: "double", color: { argb: "1E293B" } }, left: thinBorder(), right: thinBorder() };
       }
 
+      // System Counter block
+      const scLabels = [
+        { label: "CASH",         formula: `SUM(B${dataStart}:B${gtRow - 1})` },
+        { label: "G.PAY",        formula: `SUM(C${dataStart}:C${gtRow - 1})` },
+        { label: "CARD",         formula: `SUM(D${dataStart}:D${gtRow - 1})` },
+        { label: "COUNTER FLOW", formula: `SUM(G${dataStart}:G${gtRow - 1})` },
+        { label: "DUE CREATED",  formula: `SUM(E${dataStart}:E${gtRow - 1})` },
+        { label: "MANUAL",       formula: `SUM(H${dataStart}:H${gtRow - 1})` },
+      ];
+      scLabels.forEach(({ label, formula }, i) => {
+        const r = dataStart + i;
+        ws.getCell(`K${r}`).value = label;
+        ws.getCell(`K${r}`).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "1E293B" } };
+        ws.getCell(`K${r}`).fill = headerFill("EFF6FF");
+        ws.getCell(`K${r}`).border = allBorders();
+        ws.getCell(`K${r}`).alignment = { vertical: "middle" };
+        ws.getCell(`L${r}`).value = { formula };
+        ws.getCell(`L${r}`).font = { name: "Segoe UI", size: 9, bold: true };
+        ws.getCell(`L${r}`).fill = headerFill("EFF6FF");
+        ws.getCell(`L${r}`).border = allBorders();
+        ws.getCell(`L${r}`).numFmt = rupee;
+        ws.getCell(`L${r}`).alignment = { vertical: "middle", horizontal: "right" };
+      });
+
+      const gtScRow = dataStart + scLabels.length;
+      ws.getCell(`K${gtScRow}`).value = "G TOTAL";
+      ws.getCell(`K${gtScRow}`).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
+      ws.getCell(`K${gtScRow}`).fill = headerFill("1D4ED8");
+      ws.getCell(`K${gtScRow}`).border = allBorders();
+      ws.getCell(`K${gtScRow}`).alignment = { vertical: "middle" };
+      ws.getCell(`L${gtScRow}`).value = { formula: `L${dataStart}+L${dataStart+1}+L${dataStart+2}+L${dataStart+3}+L${dataStart+4}` };
+      ws.getCell(`L${gtScRow}`).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
+      ws.getCell(`L${gtScRow}`).fill = headerFill("1D4ED8");
+      ws.getCell(`L${gtScRow}`).border = allBorders();
+      ws.getCell(`L${gtScRow}`).numFmt = rupee;
+      ws.getCell(`L${gtScRow}`).alignment = { vertical: "middle", horizontal: "right" };
+
+      const diffScRow = gtScRow + 1;
+      ws.getCell(`K${diffScRow}`).value = "DIFFERENCE";
+      ws.getCell(`K${diffScRow}`).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
+      ws.getCell(`K${diffScRow}`).fill = headerFill("7F1D1D");
+      ws.getCell(`K${diffScRow}`).border = allBorders();
+      ws.getCell(`K${diffScRow}`).alignment = { vertical: "middle" };
+      ws.getCell(`L${diffScRow}`).value = { formula: `ABS(L${dataStart + 5}-L${gtScRow})` };
+      ws.getCell(`L${diffScRow}`).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
+      ws.getCell(`L${diffScRow}`).fill = headerFill("7F1D1D");
+      ws.getCell(`L${diffScRow}`).border = allBorders();
+      ws.getCell(`L${diffScRow}`).numFmt = rupee;
+      ws.getCell(`L${diffScRow}`).alignment = { vertical: "middle", horizontal: "right" };
+
       // Column widths
       ws.getColumn("A").width = 16; ws.getColumn("B").width = 13; ws.getColumn("C").width = 13;
       ws.getColumn("D").width = 13; ws.getColumn("E").width = 13; ws.getColumn("F").width = 13;
       ws.getColumn("G").width = 14; ws.getColumn("H").width = 13; ws.getColumn("I").width = 13;
       ws.getColumn("J").width = 3; ws.getColumn("K").width = 18; ws.getColumn("L").width = 14;
       ws.getColumn("M").width = 3; ws.getColumn("N").width = 14; ws.getColumn("O").width = 20; ws.getColumn("P").width = 14;
+      ws.getColumn("Q").width = 3; ws.getColumn("R").width = 14; ws.getColumn("S").width = 20; ws.getColumn("T").width = 14;
 
       // Summary aggregates
       const branchCash = entriesData.reduce((s, e) => s + e.cash, 0);

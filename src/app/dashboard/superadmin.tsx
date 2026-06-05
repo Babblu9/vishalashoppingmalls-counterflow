@@ -529,6 +529,7 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                         onChange={() => {}}
                         isReadOnly={true}
                         saveStatus="saved"
+                        branchName={branches.find((b: any) => b.id === selectedBranchId)?.name}
                       />
                     </div>
                   )}

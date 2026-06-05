@@ -8,6 +8,7 @@ import {
   Lock,
   ChevronDown,
   ChevronRight,
+  Phone,
 } from "lucide-react";
 
 export interface ReportEntryData {
@@ -20,9 +21,15 @@ export interface ReportEntryData {
   counterFlow: number;
   totalDue: number;
   collectedDue: number;
+  // Due Created details
   dueBillNo?: string;
   dueBillName?: string;
   dueBillAmount?: number;
+  dueBillMobile?: string;
+  // Due Collected details
+  collectedDueBillNo?: string;
+  collectedDueBillName?: string;
+  collectedDueBillMobile?: string;
   manualTotal: number;
   systemTotal?: number;
   difference?: number;
@@ -33,6 +40,8 @@ interface ExcelGridProps {
   onChange: (newData: ReportEntryData[]) => void;
   isReadOnly: boolean;
   saveStatus: "draft" | "saving" | "saved" | "error";
+  /** Branch name — used to restrict DUE columns to Counter 2 & 3 only in Siddipet */
+  branchName?: string;
 }
 
 interface ColumnConfig {
@@ -55,19 +64,41 @@ const COLUMNS: ColumnConfig[] = [
   { header: "+/-", key: "difference", type: "computed", editable: false },
 ];
 
-export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus }: ExcelGridProps) {
+/** Returns true if the given counter can enter DUE amounts.
+ *  Rule: In Siddipet, only Counter 2 and Counter 3 are allowed. All counters allowed in other branches. */
+function isDueAllowed(counterName: string, branchName?: string): boolean {
+  if (!branchName) return true;
+  if (branchName.toLowerCase() === "siddipet") {
+    return counterName === "Counter 2" || counterName === "Counter 3";
+  }
+  return true;
+}
+
+/** Returns true if a due entry is missing required detail fields */
+function hasMissingDueDetails(row: ReportEntryData): boolean {
+  if ((row.totalDue || 0) > 0) {
+    if (!row.dueBillNo?.trim() || !row.dueBillName?.trim() || !row.dueBillMobile?.trim()) return true;
+  }
+  if ((row.collectedDue || 0) > 0) {
+    if (!row.collectedDueBillNo?.trim() || !row.collectedDueBillName?.trim() || !row.collectedDueBillMobile?.trim()) return true;
+  }
+  return false;
+}
+
+export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, branchName }: ExcelGridProps) {
   const [focusedCell, setFocusedCell] = useState<{ rowIndex: number; colIndex: number } | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [editingValue, setEditingValue] = useState<string>("");
   const editingValueRef = useRef<string>("");
 
+  // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED goes into system total)
   const processedData = data.map((row) => {
     const systemTotal =
       (row.cash || 0) +
       (row.gpay || 0) +
       (row.card || 0) +
       (row.counterFlow || 0) +
-      (row.collectedDue || 0);
+      (row.totalDue || 0);
     const difference = Math.abs((row.manualTotal || 0) - systemTotal);
     return { ...row, systemTotal, difference };
   });
@@ -227,6 +258,8 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus }: Ex
               {processedData.map((row, rIdx) => {
                 const hasDiff = row.difference !== 0;
                 const isExpanded = expandedRows.has(rIdx);
+                const dueAllowed = isDueAllowed(row.counterName, branchName);
+                const missingDetails = !isReadOnly && hasMissingDueDetails(row);
 
                 return (
                   <React.Fragment key={row.counterId}>
@@ -235,15 +268,23 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus }: Ex
                       <td className="p-0 text-center border-r border-[#E8D5B0]">
                         <button
                           onClick={() => toggleRow(rIdx)}
-                          className="w-full h-full py-2.5 px-1 text-[#C9A227] hover:text-[#8B1A1A] transition-colors"
-                          title="Toggle Due Bill"
+                          className={`w-full h-full py-2.5 px-1 transition-colors ${
+                            missingDetails
+                              ? "text-red-500 hover:text-red-700"
+                              : "text-[#C9A227] hover:text-[#8B1A1A]"
+                          }`}
+                          title={missingDetails ? "Due details are incomplete — click to fill in" : "Toggle Due Bill Details"}
                         >
                           {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          {missingDetails && <span className="block w-1.5 h-1.5 rounded-full bg-red-500 mx-auto mt-0.5" />}
                         </button>
                       </td>
 
                       {COLUMNS.map((col, cIdx) => {
-                        const isColEditable = col.editable && !isReadOnly;
+                        // For DUE columns, disable if not allowed for this counter in Siddipet
+                        const isDueCol = col.key === "totalDue" || col.key === "collectedDue";
+                        const effectivelyEditable = col.editable && !isReadOnly && (!isDueCol || dueAllowed);
+                        const isColEditable = effectivelyEditable;
                         const value = row[col.key];
                         const isFocused = focusedCell?.rowIndex === rIdx && focusedCell?.colIndex === cIdx;
 
@@ -256,6 +297,9 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus }: Ex
                         } else if (col.type === "computed") {
                           tdClass = "text-right bg-[#FDF6EE]";
                           inputClass = hasDiff ? "text-red-600 font-bold" : "text-[#1B8A7A] font-bold";
+                        } else if (isDueCol && !dueAllowed) {
+                          tdClass = "text-right bg-[#F5F5F5]";
+                          inputClass = "text-gray-400 cursor-not-allowed";
                         }
 
                         return (
@@ -269,6 +313,9 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus }: Ex
                               <div className="py-2.5 px-3 font-bold text-xs text-[#8B1A1A] select-none">
                                 {row.counterName}
                               </div>
+                            ) : isDueCol && !dueAllowed ? (
+                              /* Disabled DUE cell for non-permitted counters in Siddipet */
+                              <div className="py-2.5 px-3 text-xs text-gray-400 text-right select-none">—</div>
                             ) : isFocused ? (
                               <input
                                 key={`edit-${rIdx}-${cIdx}`}
@@ -306,6 +353,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus }: Ex
                                 }
                                 readOnly
                                 onFocus={() => {
+                                  if (!isColEditable) return;
                                   const raw = (value as number) === 0 ? "" : String(value as number);
                                   editingValueRef.current = raw;
                                   setEditingValue(raw);
@@ -325,47 +373,152 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus }: Ex
                       })}
                     </tr>
 
-                    {/* Due Bill sub-row */}
+                    {/* Due Bill details sub-row (two sections: Created + Collected) */}
                     {isExpanded && (
                       <tr className="bg-[#FFF8F2] border-b border-[#E8D5B0]">
                         <td></td>
                         <td colSpan={COLUMNS.length} className="px-5 py-3">
-                          <div className="flex items-center gap-6 flex-wrap">
-                            <span className="text-[10px] font-bold text-[#C9A227] uppercase tracking-widest shrink-0">Due Bill</span>
-                            <div className="flex items-center gap-2">
-                              <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Bill No:</label>
-                              <input
-                                type="text"
-                                value={row.dueBillNo || ""}
-                                onChange={(e) => handleCellChange(rIdx, "dueBillNo", e.target.value, true)}
-                                disabled={isReadOnly}
-                                placeholder="e.g. BL-001"
-                                className="w-28 bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50"
-                              />
+                          <div className="flex flex-col gap-4">
+
+                            {/* DUE CREATED Details */}
+                            <div>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-[10px] font-bold text-[#1B8A7A] uppercase tracking-widest">
+                                  Due Created Details
+                                </span>
+                                {(row.totalDue || 0) > 0 && (!row.dueBillNo?.trim() || !row.dueBillName?.trim() || !row.dueBillMobile?.trim()) && (
+                                  <span className="text-[9px] text-red-500 font-semibold">* required</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Bill No:</label>
+                                  <input
+                                    type="text"
+                                    value={row.dueBillNo || ""}
+                                    onChange={(e) => handleCellChange(rIdx, "dueBillNo", e.target.value, true)}
+                                    disabled={isReadOnly}
+                                    placeholder="e.g. BL-001"
+                                    className={`w-28 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                      (row.totalDue || 0) > 0 && !row.dueBillNo?.trim()
+                                        ? "border-red-400"
+                                        : "border-[#E8D5B0]"
+                                    }`}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Name:</label>
+                                  <input
+                                    type="text"
+                                    value={row.dueBillName || ""}
+                                    onChange={(e) => handleCellChange(rIdx, "dueBillName", e.target.value, true)}
+                                    disabled={isReadOnly}
+                                    placeholder="Customer name"
+                                    className={`w-36 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                      (row.totalDue || 0) > 0 && !row.dueBillName?.trim()
+                                        ? "border-red-400"
+                                        : "border-[#E8D5B0]"
+                                    }`}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap flex items-center gap-1">
+                                    <Phone size={9} /> Mobile:
+                                  </label>
+                                  <input
+                                    type="tel"
+                                    value={row.dueBillMobile || ""}
+                                    onChange={(e) => handleCellChange(rIdx, "dueBillMobile", e.target.value, true)}
+                                    disabled={isReadOnly}
+                                    placeholder="10-digit mobile"
+                                    maxLength={10}
+                                    className={`w-32 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                      (row.totalDue || 0) > 0 && !row.dueBillMobile?.trim()
+                                        ? "border-red-400"
+                                        : "border-[#E8D5B0]"
+                                    }`}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Amount:</label>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={row.dueBillAmount || ""}
+                                    onChange={(e) => handleCellChange(rIdx, "dueBillAmount", e.target.value)}
+                                    disabled={isReadOnly}
+                                    placeholder="0"
+                                    className="w-24 bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] text-right focus:outline-none focus:border-[#C9A227] disabled:opacity-50"
+                                  />
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Name:</label>
-                              <input
-                                type="text"
-                                value={row.dueBillName || ""}
-                                onChange={(e) => handleCellChange(rIdx, "dueBillName", e.target.value, true)}
-                                disabled={isReadOnly}
-                                placeholder="Customer name"
-                                className="w-36 bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50"
-                              />
+
+                            {/* Divider */}
+                            <div className="border-t border-[#E8D5B0]" />
+
+                            {/* DUE COLLECTED Details */}
+                            <div>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-[10px] font-bold text-[#C9A227] uppercase tracking-widest">
+                                  Due Collected Details
+                                </span>
+                                {(row.collectedDue || 0) > 0 && (!row.collectedDueBillNo?.trim() || !row.collectedDueBillName?.trim() || !row.collectedDueBillMobile?.trim()) && (
+                                  <span className="text-[9px] text-red-500 font-semibold">* required</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Bill No:</label>
+                                  <input
+                                    type="text"
+                                    value={row.collectedDueBillNo || ""}
+                                    onChange={(e) => handleCellChange(rIdx, "collectedDueBillNo", e.target.value, true)}
+                                    disabled={isReadOnly}
+                                    placeholder="e.g. BL-001"
+                                    className={`w-28 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                      (row.collectedDue || 0) > 0 && !row.collectedDueBillNo?.trim()
+                                        ? "border-red-400"
+                                        : "border-[#E8D5B0]"
+                                    }`}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Name:</label>
+                                  <input
+                                    type="text"
+                                    value={row.collectedDueBillName || ""}
+                                    onChange={(e) => handleCellChange(rIdx, "collectedDueBillName", e.target.value, true)}
+                                    disabled={isReadOnly}
+                                    placeholder="Customer name"
+                                    className={`w-36 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                      (row.collectedDue || 0) > 0 && !row.collectedDueBillName?.trim()
+                                        ? "border-red-400"
+                                        : "border-[#E8D5B0]"
+                                    }`}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap flex items-center gap-1">
+                                    <Phone size={9} /> Mobile:
+                                  </label>
+                                  <input
+                                    type="tel"
+                                    value={row.collectedDueBillMobile || ""}
+                                    onChange={(e) => handleCellChange(rIdx, "collectedDueBillMobile", e.target.value, true)}
+                                    disabled={isReadOnly}
+                                    placeholder="10-digit mobile"
+                                    maxLength={10}
+                                    className={`w-32 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                      (row.collectedDue || 0) > 0 && !row.collectedDueBillMobile?.trim()
+                                        ? "border-red-400"
+                                        : "border-[#E8D5B0]"
+                                    }`}
+                                  />
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Amount:</label>
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={row.dueBillAmount || ""}
-                                onChange={(e) => handleCellChange(rIdx, "dueBillAmount", e.target.value)}
-                                disabled={isReadOnly}
-                                placeholder="0"
-                                className="w-24 bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] text-right focus:outline-none focus:border-[#C9A227] disabled:opacity-50"
-                              />
-                            </div>
+
                           </div>
                         </td>
                       </tr>
@@ -395,7 +548,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus }: Ex
         <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-3 bg-[#FDF6EE] border-t border-[#E8D5B0] text-[#9A7E6A] text-xs">
           <div className="flex items-center gap-1.5">
             <HelpCircle size={13} className="text-[#C9A227]" />
-            <span>Arrow keys to navigate · Enter/Tab to move forward · Click ▶ to expand Due Bill per counter</span>
+            <span>Arrow keys to navigate · Enter/Tab to move forward · Click ▶ to expand Due Bill details per counter</span>
           </div>
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
@@ -422,13 +575,13 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus }: Ex
                 { label: "CASH", value: totals.cash },
                 { label: "G.PAY", value: totals.gpay },
                 { label: "CARD", value: totals.card },
-                { label: "DUO (Due Collected)", value: totals.collectedDue },
-                { label: "ADV (Due Bill Amt)", value: totals.dueBillAmount, gold: true },
+                { label: "COUNTER FLOW", value: totals.counterFlow },
+                { label: "DUE CREATED", value: totals.totalDue, teal: true },
                 { label: "MANUAL (C.T)", value: totals.manualTotal },
               ].map((item, i) => (
                 <tr key={i} className="border-b border-[#E8D5B0] hover:bg-[#FDF6EE]">
                   <td className="px-5 py-2.5 text-xs font-semibold text-[#5C4A3A]">{item.label}</td>
-                  <td className={`px-5 py-2.5 text-right text-xs font-bold ${item.gold ? "text-[#C9A227]" : "text-[#1A0A0A]"}`}>
+                  <td className={`px-5 py-2.5 text-right text-xs font-bold ${(item as any).teal ? "text-[#1B8A7A]" : "text-[#1A0A0A]"}`}>
                     {fmt(item.value)}
                   </td>
                 </tr>
@@ -447,56 +600,111 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus }: Ex
           </table>
         </div>
 
-        {/* Due Bills Summary */}
+        {/* Due Bills Summary — two sections */}
         <div className="bg-white border border-[#E8D5B0] rounded-xl overflow-hidden shadow-md">
           <div className="px-5 py-3 bg-[#8B1A1A] flex items-center gap-2 border-b border-[#C9A227]/30">
             <div className="h-2 w-2 rounded-full bg-[#C9A227]"></div>
             <span className="text-xs font-bold text-white uppercase tracking-widest">Due Bills</span>
           </div>
-          <div className="overflow-y-auto max-h-[260px]">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-[#FDF6EE] border-b border-[#E8D5B0]">
-                <tr>
-                  <th className="px-4 py-2 text-left text-[10px] font-bold text-[#9A7E6A] uppercase">Counter</th>
-                  <th className="px-4 py-2 text-left text-[10px] font-bold text-[#9A7E6A] uppercase">Bill No</th>
-                  <th className="px-4 py-2 text-left text-[10px] font-bold text-[#9A7E6A] uppercase">Name</th>
-                  <th className="px-4 py-2 text-right text-[10px] font-bold text-[#9A7E6A] uppercase">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E8D5B0]">
-                {data.filter((r) => r.dueBillNo || r.dueBillName || (r.dueBillAmount && r.dueBillAmount > 0)).length === 0 ? (
+
+          {/* Due Created section */}
+          <div className="border-b border-[#E8D5B0]">
+            <div className="px-4 py-1.5 bg-[#E6F7F4] text-[10px] font-bold text-[#1B8A7A] uppercase tracking-widest">
+              Due Created
+            </div>
+            <div className="overflow-y-auto max-h-[180px]">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-[#FDF6EE] border-b border-[#E8D5B0]">
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-xs text-[#9A7E6A]">
-                      No due bills entered. Click ▶ on any counter row to add.
-                    </td>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Counter</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Bill No</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Name</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Mobile</th>
+                    <th className="px-3 py-1.5 text-right text-[9px] font-bold text-[#9A7E6A] uppercase">Amount</th>
                   </tr>
-                ) : (
-                  data
-                    .filter((r) => r.dueBillNo || r.dueBillName || (r.dueBillAmount && r.dueBillAmount > 0))
-                    .map((r, i) => (
-                      <tr key={i} className="hover:bg-[#FDF6EE]">
-                        <td className="px-4 py-2 text-xs font-bold text-[#8B1A1A]">{r.counterName}</td>
-                        <td className="px-4 py-2 text-xs text-[#5C4A3A]">{r.dueBillNo || "—"}</td>
-                        <td className="px-4 py-2 text-xs text-[#5C4A3A]">{r.dueBillName || "—"}</td>
-                        <td className="px-4 py-2 text-right text-xs font-bold text-[#C9A227]">
-                          {fmt(r.dueBillAmount || 0)}
-                        </td>
-                      </tr>
-                    ))
+                </thead>
+                <tbody className="divide-y divide-[#E8D5B0]">
+                  {data.filter((r) => (r.totalDue || 0) > 0 || r.dueBillNo || r.dueBillName).length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-4 text-center text-xs text-[#9A7E6A]">
+                        No due created entries.
+                      </td>
+                    </tr>
+                  ) : (
+                    data
+                      .filter((r) => (r.totalDue || 0) > 0 || r.dueBillNo || r.dueBillName)
+                      .map((r, i) => (
+                        <tr key={i} className="hover:bg-[#FDF6EE]">
+                          <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A]">{r.counterName}</td>
+                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.dueBillNo || "—"}</td>
+                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.dueBillName || "—"}</td>
+                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.dueBillMobile || "—"}</td>
+                          <td className="px-3 py-1.5 text-right text-xs font-bold text-[#1B8A7A]">{fmt(r.totalDue || 0)}</td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+                {data.some((r) => (r.totalDue || 0) > 0) && (
+                  <tfoot>
+                    <tr className="border-t-2 border-[#E8D5B0] bg-[#FDF6EE]">
+                      <td colSpan={4} className="px-3 py-2 text-xs font-extrabold text-[#5C4A3A] uppercase">Total</td>
+                      <td className="px-3 py-2 text-right text-xs font-extrabold text-[#1B8A7A]">{fmt(totals.totalDue)}</td>
+                    </tr>
+                  </tfoot>
                 )}
-              </tbody>
-              {data.some((r) => r.dueBillAmount && r.dueBillAmount > 0) && (
-                <tfoot>
-                  <tr className="border-t-2 border-[#E8D5B0] bg-[#FDF6EE]">
-                    <td colSpan={3} className="px-4 py-2.5 text-xs font-extrabold text-[#5C4A3A] uppercase">Total</td>
-                    <td className="px-4 py-2.5 text-right text-xs font-extrabold text-[#C9A227]">
-                      {fmt(totals.dueBillAmount)}
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
+              </table>
+            </div>
           </div>
+
+          {/* Due Collected section */}
+          <div>
+            <div className="px-4 py-1.5 bg-[#FEF3C7] text-[10px] font-bold text-[#92400E] uppercase tracking-widest">
+              Due Collected
+            </div>
+            <div className="overflow-y-auto max-h-[180px]">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-[#FDF6EE] border-b border-[#E8D5B0]">
+                  <tr>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Counter</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Bill No</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Name</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Mobile</th>
+                    <th className="px-3 py-1.5 text-right text-[9px] font-bold text-[#9A7E6A] uppercase">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E8D5B0]">
+                  {data.filter((r) => (r.collectedDue || 0) > 0 || r.collectedDueBillNo || r.collectedDueBillName).length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-4 text-center text-xs text-[#9A7E6A]">
+                        No due collected entries.
+                      </td>
+                    </tr>
+                  ) : (
+                    data
+                      .filter((r) => (r.collectedDue || 0) > 0 || r.collectedDueBillNo || r.collectedDueBillName)
+                      .map((r, i) => (
+                        <tr key={i} className="hover:bg-[#FDF6EE]">
+                          <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A]">{r.counterName}</td>
+                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.collectedDueBillNo || "—"}</td>
+                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.collectedDueBillName || "—"}</td>
+                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.collectedDueBillMobile || "—"}</td>
+                          <td className="px-3 py-1.5 text-right text-xs font-bold text-[#C9A227]">{fmt(r.collectedDue || 0)}</td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+                {data.some((r) => (r.collectedDue || 0) > 0) && (
+                  <tfoot>
+                    <tr className="border-t-2 border-[#E8D5B0] bg-[#FDF6EE]">
+                      <td colSpan={4} className="px-3 py-2 text-xs font-extrabold text-[#5C4A3A] uppercase">Total</td>
+                      <td className="px-3 py-2 text-right text-xs font-extrabold text-[#C9A227]">{fmt(totals.collectedDue)}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

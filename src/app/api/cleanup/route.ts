@@ -10,7 +10,7 @@ export async function GET() {
   }
 
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 30);
+  cutoff.setDate(cutoff.getDate() - 45);
   const cutoffDate = cutoff.toISOString().split("T")[0];
 
   const reportCount = await prisma.dailyReport.count({
@@ -26,7 +26,7 @@ export async function GET() {
   });
 }
 
-// POST: Execute cleanup — delete DailyReports (and cascading entries) + old audit logs older than 30 days
+// POST: Execute cleanup — delete DailyReports (and cascading entries) + old audit logs older than 45 days
 export async function POST() {
   const session = await getSession();
   if (!session || session.role !== "SUPER_ADMIN") {
@@ -34,15 +34,15 @@ export async function POST() {
   }
 
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 30);
+  cutoff.setDate(cutoff.getDate() - 45);
   const cutoffDate = cutoff.toISOString().split("T")[0];
 
-  // Delete reports older than 30 days (ReportEntry cascades via onDelete: Cascade)
+  // Delete reports older than 45 days (ReportEntry cascades via onDelete: Cascade)
   const deletedReports = await prisma.dailyReport.deleteMany({
     where: { businessDate: { lt: cutoffDate } },
   });
 
-  // Delete audit logs older than 30 days
+  // Delete audit logs older than 45 days
   const deletedLogs = await prisma.auditLog.deleteMany({
     where: { timestamp: { lt: cutoff } },
   });

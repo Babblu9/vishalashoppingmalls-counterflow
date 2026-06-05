@@ -275,6 +275,7 @@ export default function AdminDashboard({ session }: AdminDashboardProps) {
             onChange={handleGridChange}
             isReadOnly={isReadOnly}
             saveStatus={saveStatus}
+            branchName={session.branchName}
           />
         </div>
       </main>

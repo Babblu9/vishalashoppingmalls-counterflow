@@ -43,3 +43,4 @@ src/generated/
 
 # TypeScript build info
 tsconfig.tsbuildinfo
+.vercel

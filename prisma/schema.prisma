@@ -73,14 +73,20 @@ model ReportEntry {
   totalDue     Float       @default(0)
   collectedDue Float       @default(0)
 
-  // Due Bill details (per counter)
-  dueBillNo    String?
-  dueBillName  String?
+  // Due Created details (per counter)
+  dueBillNo     String?
+  dueBillName   String?
   dueBillAmount Float      @default(0)
+  dueBillMobile String?
+
+  // Due Collected details (per counter)
+  collectedDueBillNo     String?
+  collectedDueBillName   String?
+  collectedDueBillMobile String?
   
   // Computed values stored for fast indexing / snapshot auditing
   manualTotal  Float       @default(0)
-  systemTotal  Float       @default(0) // cash + gpay + card + counterFlow + collectedDue
+  systemTotal  Float       @default(0) // cash + gpay + card + counterFlow + totalDue
   difference   Float       @default(0) // manualTotal - systemTotal
   grandTotal   Float       @default(0) // systemTotal
   

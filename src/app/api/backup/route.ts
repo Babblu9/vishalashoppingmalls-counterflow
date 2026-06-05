@@ -10,12 +10,12 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Window: last 30 days
+  // Window: last 45 days
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 30);
+  cutoff.setDate(cutoff.getDate() - 45);
   const cutoffDate = cutoff.toISOString().split("T")[0]; // "YYYY-MM-DD"
 
-  // All reports within the last 30 days
+  // All reports within the last 45 days
   const reports = await prisma.dailyReport.findMany({
     where: { businessDate: { gte: cutoffDate } },
     include: {
