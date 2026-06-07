@@ -47,7 +47,7 @@ interface ExcelGridProps {
 interface ColumnConfig {
   header: string;
   subHeader?: string;
-  key: keyof ReportEntryData | "systemTotal" | "difference";
+  key: keyof ReportEntryData;
   type: "text" | "number" | "computed" | "string";
   editable: boolean;
 }
@@ -60,8 +60,8 @@ const COLUMNS: ColumnConfig[] = [
   { header: "DUE", subHeader: "Created", key: "totalDue", type: "number", editable: true },
   { header: "DUE", subHeader: "Collected", key: "collectedDue", type: "number", editable: true },
   { header: "COUNTER FLOW", key: "counterFlow", type: "number", editable: true },
-  { header: "C.T", subHeader: "Physical", key: "manualTotal", type: "number", editable: true },
-  { header: "+/-", key: "difference", type: "computed", editable: false },
+  { header: "C.T", subHeader: "Sum", key: "systemTotal", type: "computed", editable: false },
+  { header: "+/-", key: "manualTotal", type: "number", editable: true },
 ];
 
 /** Returns true if the given counter can enter DUE amounts.
@@ -99,8 +99,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
       (row.card || 0) +
       (row.counterFlow || 0) +
       (row.totalDue || 0);
-    const difference = Math.abs((row.manualTotal || 0) - systemTotal);
-    return { ...row, systemTotal, difference };
+    return { ...row, systemTotal };
   });
 
   const totals = processedData.reduce(
@@ -113,11 +112,10 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
       acc.collectedDue += row.collectedDue || 0;
       acc.systemTotal += row.systemTotal || 0;
       acc.manualTotal += row.manualTotal || 0;
-      acc.difference += row.difference || 0;
       acc.dueBillAmount += row.dueBillAmount || 0;
       return acc;
     },
-    { cash: 0, gpay: 0, card: 0, counterFlow: 0, totalDue: 0, collectedDue: 0, systemTotal: 0, manualTotal: 0, difference: 0, dueBillAmount: 0 }
+    { cash: 0, gpay: 0, card: 0, counterFlow: 0, totalDue: 0, collectedDue: 0, systemTotal: 0, manualTotal: 0, dueBillAmount: 0 }
   );
 
   const toggleRow = (rowIndex: number) => {
@@ -256,7 +254,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
 
             <tbody className="divide-y divide-[#E8D5B0]">
               {processedData.map((row, rIdx) => {
-                const hasDiff = row.difference !== 0;
+                const hasDiff = (row.manualTotal || 0) !== 0;
                 const isExpanded = expandedRows.has(rIdx);
                 const dueAllowed = isDueAllowed(row.counterName, branchName);
                 const missingDetails = !isReadOnly && hasMissingDueDetails(row);
@@ -297,6 +295,8 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                         } else if (col.type === "computed") {
                           tdClass = "text-right bg-[#FDF6EE]";
                           inputClass = hasDiff ? "text-red-600 font-bold" : "text-[#1B8A7A] font-bold";
+                        } else if (col.key === "manualTotal") {
+                          inputClass = hasDiff ? "text-red-600 font-bold" : "text-[#1A0A0A]";
                         } else if (isDueCol && !dueAllowed) {
                           tdClass = "text-right bg-[#F5F5F5]";
                           inputClass = "text-gray-400 cursor-not-allowed";
@@ -346,11 +346,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                                 id={`cell-${rIdx}-${cIdx}`}
                                 type="text"
                                 inputMode="decimal"
-                                value={
-                                  col.key === "difference"
-                                    ? hasDiff ? fmt(value as number) : "₹0"
-                                    : fmt(value as number)
-                                }
+                                value={fmt((value as number) || 0)}
                                 readOnly
                                 onFocus={() => {
                                   if (!isColEditable) return;
@@ -365,7 +361,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                                 }`}
                               />
                             )}
-                            {col.key === "difference" && hasDiff && (
+                            {col.key === "manualTotal" && hasDiff && (
                               <div className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(220,38,38,0.8)]"></div>
                             )}
                           </td>
@@ -533,11 +529,14 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                 <td className="py-3 px-3 text-xs font-extrabold uppercase tracking-wider text-[#C9A227] sticky left-9 z-10 border-r border-[#C9A227]/20 bg-[#8B1A1A]">
                   G.T
                 </td>
-                {[totals.cash, totals.gpay, totals.card, totals.totalDue, totals.collectedDue, totals.counterFlow, totals.manualTotal].map((v, i) => (
+                {[totals.cash, totals.gpay, totals.card, totals.totalDue, totals.collectedDue, totals.counterFlow].map((v, i) => (
                   <td key={i} className="py-3 px-3 text-right text-xs text-white border-r border-[#C9A227]/20">{fmt(v)}</td>
                 ))}
-                <td className={`py-3 px-3 text-right text-xs font-extrabold border-r border-[#C9A227]/20 ${totals.difference !== 0 ? "text-red-300" : "text-[#C9A227]"}`}>
-                  {fmt(totals.difference)}
+                <td className="py-3 px-3 text-right text-xs font-extrabold border-r border-[#C9A227]/20 text-[#C9A227]">
+                  {fmt(totals.systemTotal)}
+                </td>
+                <td className={`py-3 px-3 text-right text-xs font-extrabold border-r border-[#C9A227]/20 ${(totals.manualTotal || 0) !== 0 ? "text-red-300" : "text-[#C9A227]"}`}>
+                  {fmt(totals.manualTotal)}
                 </td>
               </tr>
             </tbody>
@@ -577,7 +576,6 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                 { label: "CARD", value: totals.card },
                 { label: "COUNTER FLOW", value: totals.counterFlow },
                 { label: "DUE CREATED", value: totals.totalDue, teal: true },
-                { label: "MANUAL (C.T)", value: totals.manualTotal },
               ].map((item, i) => (
                 <tr key={i} className="border-b border-[#E8D5B0] hover:bg-[#FDF6EE]">
                   <td className="px-5 py-2.5 text-xs font-semibold text-[#5C4A3A]">{item.label}</td>
@@ -590,10 +588,10 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                 <td className="px-5 py-3 text-xs font-extrabold text-[#8B1A1A] uppercase tracking-wider">G TOTAL</td>
                 <td className="px-5 py-3 text-right text-sm font-extrabold text-[#8B1A1A]">{fmt(totals.systemTotal)}</td>
               </tr>
-              <tr className={totals.difference !== 0 ? "bg-red-50" : "bg-[#1B8A7A]/5"}>
+              <tr className={totals.manualTotal !== 0 ? "bg-red-50" : "bg-[#1B8A7A]/5"}>
                 <td className="px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-[#5C4A3A]">DIFFERENCE</td>
-                <td className={`px-5 py-3 text-right text-sm font-extrabold ${totals.difference !== 0 ? "text-red-600" : "text-[#1B8A7A]"}`}>
-                  {fmt(totals.difference)}
+                <td className={`px-5 py-3 text-right text-sm font-extrabold ${totals.manualTotal !== 0 ? "text-red-600" : "text-[#1B8A7A]"}`}>
+                  {fmt(totals.manualTotal)}
                 </td>
               </tr>
             </tbody>

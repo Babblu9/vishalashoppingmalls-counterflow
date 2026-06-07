@@ -108,7 +108,7 @@ export async function GET(request: Request) {
         entry.card +
         entry.counterFlow +
         entry.totalDue;
-      const difference = Math.abs(entry.manualTotal - systemTotal);
+      const difference = entry.manualTotal; // user-entered +/- value
       return {
         id: entry.id,
         counterId: entry.counterId,
@@ -262,7 +262,7 @@ export async function POST(request: Request) {
 
         // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED)
         const systemTotal = cash + gpay + card + counterFlow + totalDue;
-        const difference = manualTotal - systemTotal;
+        const difference = manualTotal; // user-entered +/- discrepancy stored directly
         const grandTotal = systemTotal;
 
         // Check if there was an existing database entry for audit logs

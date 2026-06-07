@@ -144,7 +144,7 @@ export async function GET(request: Request) {
       const leftHeaders = [
         { col: "A", label: "C.N" }, { col: "B", label: "CASH" }, { col: "C", label: "G.PAY" },
         { col: "D", label: "CARD" }, { col: "E", label: "DUE\nCreated" }, { col: "F", label: "DUE\nCollected" },
-        { col: "G", label: "COUNTER FLOW" }, { col: "H", label: "C.T Physical" }, { col: "I", label: "+/-" },
+        { col: "G", label: "COUNTER FLOW" }, { col: "H", label: "C.T\nSum" }, { col: "I", label: "+/-" },
       ];
       ws.getRow(5).height = 30;
       leftHeaders.forEach(({ col, label }) => {
@@ -204,7 +204,6 @@ export async function GET(request: Request) {
             // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED)
             systemTotal: e.cash + e.gpay + e.card + e.counterFlow + e.totalDue,
             manualTotal: e.manualTotal,
-            difference: e.manualTotal - (e.cash + e.gpay + e.card + e.counterFlow + e.totalDue),
           }));
       } else {
         const counters = (countersByBranch.get(branch.id) ?? []).sort((a, b) => counterSort(a.name, b.name));
@@ -213,7 +212,7 @@ export async function GET(request: Request) {
           totalDue: 0, collectedDue: 0, counterFlow: 0,
           dueBillNo: "", dueBillName: "", dueBillMobile: "",
           collectedDueBillNo: "", collectedDueBillName: "", collectedDueBillMobile: "",
-          systemTotal: 0, manualTotal: 0, difference: 0,
+          systemTotal: 0, manualTotal: 0,
         }));
       }
 
@@ -221,7 +220,7 @@ export async function GET(request: Request) {
       entriesData.forEach((entry, idx) => {
         const r = dataStart + idx;
         ws.getRow(r).height = 20;
-        const hasDiff = entry.difference !== 0;
+        const hasDiff = (entry.manualTotal || 0) !== 0;
         ws.getCell(`A${r}`).value = entry.counterName;
         ws.getCell(`B${r}`).value = entry.cash;
         ws.getCell(`C${r}`).value = entry.gpay;
@@ -229,9 +228,10 @@ export async function GET(request: Request) {
         ws.getCell(`E${r}`).value = entry.totalDue;
         ws.getCell(`F${r}`).value = entry.collectedDue;
         ws.getCell(`G${r}`).value = entry.counterFlow;
-        ws.getCell(`H${r}`).value = entry.manualTotal;
-        // +/- formula: ABS(H - (B+C+D+E+G))  — E=totalDue in G total, F=collectedDue excluded
-        ws.getCell(`I${r}`).value = { formula: `ABS(H${r}-(B${r}+C${r}+D${r}+E${r}+G${r}))`, result: Math.abs(entry.difference) };
+        // H: C.T Sum = computed sum (B+C+D+E+G)
+        ws.getCell(`H${r}`).value = { formula: `B${r}+C${r}+D${r}+E${r}+G${r}`, result: entry.systemTotal };
+        // I: +/- = user-entered discrepancy (manualTotal)
+        ws.getCell(`I${r}`).value = entry.manualTotal;
         for (const col of ["A", "B", "C", "D", "E", "F", "G", "H", "I"]) {
           const cell = ws.getCell(`${col}${r}`);
           cell.border = allBorders();
@@ -285,7 +285,6 @@ export async function GET(request: Request) {
         { label: "CARD",         formula: `SUM(D${dataStart}:D${gtRow - 1})` },
         { label: "COUNTER FLOW", formula: `SUM(G${dataStart}:G${gtRow - 1})` },
         { label: "DUE CREATED",  formula: `SUM(E${dataStart}:E${gtRow - 1})` },
-        { label: "MANUAL",       formula: `SUM(H${dataStart}:H${gtRow - 1})` },
       ];
       scLabels.forEach(({ label, formula }, i) => {
         const r = dataStart + i;
@@ -321,7 +320,7 @@ export async function GET(request: Request) {
       ws.getCell(`K${diffScRow}`).fill = headerFill("7F1D1D");
       ws.getCell(`K${diffScRow}`).border = allBorders();
       ws.getCell(`K${diffScRow}`).alignment = { vertical: "middle" };
-      ws.getCell(`L${diffScRow}`).value = { formula: `ABS(L${dataStart + 5}-L${gtScRow})` };
+      ws.getCell(`L${diffScRow}`).value = { formula: `SUM(I${dataStart}:I${gtRow - 1})` }; // sum of user-entered +/- values
       ws.getCell(`L${diffScRow}`).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
       ws.getCell(`L${diffScRow}`).fill = headerFill("7F1D1D");
       ws.getCell(`L${diffScRow}`).border = allBorders();
