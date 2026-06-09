@@ -25,6 +25,8 @@ import {
   ArchiveRestore,
   Database,
   Trash,
+  LayoutGrid,
+  TrendingUp,
 } from "lucide-react";
 import Image from "next/image";
 import ExcelGrid, { ReportEntryData } from "@/components/ExcelGrid";
@@ -80,7 +82,7 @@ const EMPTY_FORM: AdminFormState = { username: "", name: "", password: "", branc
 
 export default function SuperAdminDashboard({ session }: SuperAdminDashboardProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"overview" | "logs" | "admins" | "backup">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "liveview" | "logs" | "admins" | "backup">("overview");
   const [selectedDate, setSelectedDate] = useState("");
   const [branches, setBranches] = useState<any[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>("all");
@@ -337,6 +339,7 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
           <nav className="space-y-1">
             {[
               { id: "overview", label: "Overview", icon: Building },
+              { id: "liveview", label: "Live Branch View", icon: LayoutGrid },
               { id: "logs", label: "System Audit Logs", icon: Activity },
               { id: "admins", label: "Admin Credentials", icon: ShieldCheck },
               { id: "backup", label: "History & Backup", icon: ArchiveRestore },
@@ -536,6 +539,186 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                 </div>
               </div>
             </>
+          )}
+
+          {activeTab === "liveview" && (
+            <div className="space-y-6">
+              {/* Page header */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-extrabold text-[#8B1A1A]">Live Branch Summary</h3>
+                  <p className="text-xs text-[#9A7E6A] mt-0.5">
+                    Aggregated daily totals per branch · Business Date: <span className="font-bold text-[#5C4A3A]">{selectedDate}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={fetchData}
+                  disabled={isLoading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#FDF6EE] hover:bg-[#F0E4CC] border border-[#E8D5B0] text-xs font-bold text-[#5C4A3A] transition-all cursor-pointer disabled:opacity-60"
+                >
+                  <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
+                  Refresh
+                </button>
+              </div>
+
+              {/* Loading state */}
+              {isLoading && (
+                <div className="flex items-center justify-center py-20 text-[#9A7E6A] text-sm gap-2">
+                  <RefreshCw size={16} className="animate-spin text-[#C9A227]" /> Loading branch data...
+                </div>
+              )}
+
+              {/* Branch cards */}
+              {!isLoading && summary?.branchSummaries.map((branch: any) => {
+                const hasDiff = (branch.totals.manualTotal || 0) !== 0;
+                const branchAlerts = (summary.alerts || []).filter((a: any) => a.branchName === branch.branchName);
+
+                const stats = [
+                  { label: "CASH",          value: branch.totals.cash,         style: "default" },
+                  { label: "G.PAY",         value: branch.totals.gpay,         style: "default" },
+                  { label: "CARD",          value: branch.totals.card,         style: "default" },
+                  { label: "COUNTER FLOW",  value: branch.totals.counterFlow,  style: "default" },
+                  { label: "DUE CREATED",   value: branch.totals.totalDue,     style: "teal"    },
+                  { label: "DUE COLLECTED", value: branch.totals.collectedDue, style: "gold"    },
+                  { label: "C.T SUM",       value: branch.totals.systemTotal,  style: "primary" },
+                  { label: "+/-",           value: branch.totals.manualTotal,  style: hasDiff ? "red" : "green" },
+                ];
+
+                return (
+                  <div key={branch.branchId} className="bg-white border border-[#E8D5B0] rounded-xl shadow-sm overflow-hidden">
+                    {/* Card header */}
+                    <div className="px-6 py-4 bg-[#8B1A1A] flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Building size={15} className="text-[#C9A227]" />
+                        <h4 className="text-base font-extrabold text-white uppercase tracking-wider">{branch.branchName}</h4>
+                        <span className="text-[10px] font-semibold text-white/50 bg-white/10 px-2 py-0.5 rounded-full">
+                          {branch.filledCounters}/{branch.totalCounters} counters filled
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {branch.status === "SUBMITTED" ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-[#1B8A7A] text-white">
+                            <CheckCircle size={11} /> SUBMITTED
+                          </span>
+                        ) : branch.status === "DRAFT" ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-500 text-white">
+                            <Clock size={11} /> IN DRAFT
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-white/20 text-white/70">
+                            NOT STARTED
+                          </span>
+                        )}
+                        {branch.submittedBy && (
+                          <span className="text-[10px] text-white/60">
+                            by {branch.submittedBy}
+                            {branch.submittedAt && (
+                              <> · {new Date(branch.submittedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</>
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Stats grid — 8 columns matching the Excel sheet */}
+                    <div className="p-5">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+                        {stats.map(({ label, value, style }) => (
+                          <div
+                            key={label}
+                            className={`rounded-lg p-3.5 border ${
+                              style === "primary" ? "bg-[#8B1A1A]/5 border-[#8B1A1A]/15"  :
+                              style === "teal"    ? "bg-[#1B8A7A]/5 border-[#1B8A7A]/20"  :
+                              style === "gold"    ? "bg-[#C9A227]/5 border-[#C9A227]/25"  :
+                              style === "red"     ? "bg-red-50 border-red-200"            :
+                              style === "green"   ? "bg-[#1B8A7A]/5 border-[#1B8A7A]/20" :
+                              "bg-[#FDF6EE] border-[#E8D5B0]"
+                            }`}
+                          >
+                            <p className="text-[9px] font-bold text-[#9A7E6A] uppercase tracking-wider leading-tight">{label}</p>
+                            <p className={`text-sm font-extrabold mt-1.5 leading-none ${
+                              style === "primary" ? "text-[#8B1A1A]"  :
+                              style === "teal"    ? "text-[#1B8A7A]"  :
+                              style === "gold"    ? "text-[#92400E]"  :
+                              style === "red"     ? "text-red-600"    :
+                              style === "green"   ? "text-[#1B8A7A]"  :
+                              "text-[#1A0A0A]"
+                            }`}>
+                              {formatCurrency(value)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Discrepancy alert — only shown when +/- is non-zero */}
+                    {hasDiff && branchAlerts.length > 0 && (
+                      <div className="px-5 pb-5">
+                        <div className="rounded-lg bg-red-50 border border-red-200 overflow-hidden">
+                          <div className="flex items-center gap-2 px-4 py-2 bg-red-100 border-b border-red-200">
+                            <AlertTriangle size={12} className="text-red-600 shrink-0" />
+                            <p className="text-xs font-bold text-red-700 uppercase tracking-wider">
+                              Discrepancies — {branchAlerts.length} counter{branchAlerts.length > 1 ? "s" : ""}
+                            </p>
+                          </div>
+                          <div className="divide-y divide-red-100">
+                            {branchAlerts.map((alert: any, i: number) => (
+                              <div key={i} className="flex items-center justify-between px-4 py-2">
+                                <span className="text-xs font-semibold text-red-800">{alert.counterName}</span>
+                                <span className="text-xs font-extrabold text-red-600">{formatCurrency(alert.difference)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* No data state */}
+              {!isLoading && !summary && (
+                <div className="flex flex-col items-center justify-center py-20 text-[#9A7E6A] border-2 border-dashed border-[#E8D5B0] rounded-xl">
+                  <LayoutGrid size={28} className="text-[#C9A227]/50 mb-3" />
+                  <p className="text-sm font-bold text-[#5C4A3A]">No branch data loaded</p>
+                  <p className="text-xs mt-1">Click Refresh to load today's branch summaries.</p>
+                </div>
+              )}
+
+              {/* Combined grand total across all branches */}
+              {!isLoading && summary && summary.branchSummaries.length > 0 && (
+                <div className="bg-[#8B1A1A] rounded-xl border border-[#C9A227]/20 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-[#C9A227]/20 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp size={15} className="text-[#C9A227]" />
+                      <h4 className="text-sm font-extrabold text-white uppercase tracking-wider">All Branches — Combined Total</h4>
+                    </div>
+                    <span className="text-xs font-semibold text-white/50">
+                      {summary.metrics.totalSubmittedBranches}/{summary.metrics.totalBranches} branches submitted
+                    </span>
+                  </div>
+                  <div className="p-5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+                      {[
+                        { label: "CASH",          value: summary.branchSummaries.reduce((s: number, b: any) => s + b.totals.cash,         0) },
+                        { label: "G.PAY",         value: summary.branchSummaries.reduce((s: number, b: any) => s + b.totals.gpay,         0) },
+                        { label: "CARD",          value: summary.branchSummaries.reduce((s: number, b: any) => s + b.totals.card,         0) },
+                        { label: "COUNTER FLOW",  value: summary.branchSummaries.reduce((s: number, b: any) => s + b.totals.counterFlow,  0) },
+                        { label: "DUE CREATED",   value: summary.branchSummaries.reduce((s: number, b: any) => s + b.totals.totalDue,     0) },
+                        { label: "DUE COLLECTED", value: summary.branchSummaries.reduce((s: number, b: any) => s + b.totals.collectedDue, 0) },
+                        { label: "C.T SUM",       value: summary.metrics.totalCollection },
+                        { label: "+/- DIFF",      value: summary.branchSummaries.reduce((s: number, b: any) => s + (b.totals.manualTotal || 0), 0) },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="rounded-lg p-3.5 bg-white/10 border border-white/15">
+                          <p className="text-[9px] font-bold text-[#C9A227]/70 uppercase tracking-wider leading-tight">{label}</p>
+                          <p className="text-sm font-extrabold mt-1.5 text-white leading-none">{formatCurrency(value)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {activeTab === "logs" && (
