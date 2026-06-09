@@ -63,6 +63,13 @@ export async function GET(request: Request) {
         // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED)
         const systemTotal =
           entry.cash + entry.gpay + entry.card + entry.counterFlow + entry.totalDue;
+
+        // Build multiline strings from JSON arrays (fallback to legacy single fields)
+        const rawDue = entry.dueBillsJson as any[];
+        const dueBills = Array.isArray(rawDue) && rawDue.length > 0 ? rawDue : null;
+        const rawCol = entry.collectedDueBillsJson as any[];
+        const colBills = Array.isArray(rawCol) && rawCol.length > 0 ? rawCol : null;
+
         return {
           counterName: entry.counter.name,
           cash: entry.cash,
@@ -71,14 +78,14 @@ export async function GET(request: Request) {
           totalDue: entry.totalDue,
           collectedDue: entry.collectedDue,
           counterFlow: entry.counterFlow,
-          // Due Created details
-          dueBillNo: entry.dueBillNo || "",
-          dueBillName: entry.dueBillName || "",
-          dueBillMobile: entry.dueBillMobile || "",
+          // Due Created details — join multiple bills with newline
+          dueBillNo:   dueBills ? dueBills.map((b: any) => b.billNo || "").join("\n") : (entry.dueBillNo || ""),
+          dueBillName: dueBills ? dueBills.map((b: any) => b.name   || "").join("\n") : (entry.dueBillName || ""),
+          dueBillMobile: dueBills ? dueBills.map((b: any) => b.mobile || "").join("\n") : (entry.dueBillMobile || ""),
           // Due Collected details
-          collectedDueBillNo: entry.collectedDueBillNo || "",
-          collectedDueBillName: entry.collectedDueBillName || "",
-          collectedDueBillMobile: entry.collectedDueBillMobile || "",
+          collectedDueBillNo:     colBills ? colBills.map((b: any) => b.billNo || "").join("\n") : (entry.collectedDueBillNo || ""),
+          collectedDueBillName:   colBills ? colBills.map((b: any) => b.name   || "").join("\n") : (entry.collectedDueBillName || ""),
+          collectedDueBillMobile: colBills ? colBills.map((b: any) => b.mobile || "").join("\n") : (entry.collectedDueBillMobile || ""),
           systemTotal,
           manualTotal: entry.manualTotal,
         };
@@ -281,7 +288,7 @@ export async function GET(request: Request) {
         const cell = ws.getCell(`${col}${r}`);
         cell.border = allBorders("1B8A7A");
         cell.font = { name: "Segoe UI", size: 9 };
-        cell.alignment = { vertical: "middle", horizontal: "left" };
+        cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
       }
 
       // Due Collected detail columns R–T
@@ -293,7 +300,7 @@ export async function GET(request: Request) {
         const cell = ws.getCell(`${col}${r}`);
         cell.border = allBorders("D97706");
         cell.font = { name: "Segoe UI", size: 9 };
-        cell.alignment = { vertical: "middle", horizontal: "left" };
+        cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
       }
     });
 

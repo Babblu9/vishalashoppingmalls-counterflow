@@ -77,6 +77,8 @@ export async function GET(request: Request) {
         collectedDueBillNo: null,
         collectedDueBillName: null,
         collectedDueBillMobile: null,
+        dueBills: [],
+        collectedDueBills: [],
         manualTotal: 0,
         systemTotal: 0,
         difference: 0,
@@ -109,6 +111,25 @@ export async function GET(request: Request) {
         entry.counterFlow +
         entry.totalDue;
       const difference = entry.manualTotal; // user-entered +/- value
+
+      // Build dueBills array: prefer dueBillsJson, fallback to legacy single fields
+      const rawDueBills = entry.dueBillsJson as any[];
+      const dueBills: { billNo: string; name: string; amount: number; mobile: string }[] =
+        Array.isArray(rawDueBills) && rawDueBills.length > 0
+          ? rawDueBills
+          : (entry.dueBillNo || entry.dueBillName || entry.dueBillMobile)
+            ? [{ billNo: entry.dueBillNo || "", name: entry.dueBillName || "", amount: entry.dueBillAmount || 0, mobile: entry.dueBillMobile || "" }]
+            : [];
+
+      // Build collectedDueBills array: prefer collectedDueBillsJson, fallback to legacy fields
+      const rawCollected = entry.collectedDueBillsJson as any[];
+      const collectedDueBills: { billNo: string; name: string; mobile: string }[] =
+        Array.isArray(rawCollected) && rawCollected.length > 0
+          ? rawCollected
+          : (entry.collectedDueBillNo || entry.collectedDueBillName || entry.collectedDueBillMobile)
+            ? [{ billNo: entry.collectedDueBillNo || "", name: entry.collectedDueBillName || "", mobile: entry.collectedDueBillMobile || "" }]
+            : [];
+
       return {
         id: entry.id,
         counterId: entry.counterId,
@@ -126,6 +147,8 @@ export async function GET(request: Request) {
         collectedDueBillNo: entry.collectedDueBillNo,
         collectedDueBillName: entry.collectedDueBillName,
         collectedDueBillMobile: entry.collectedDueBillMobile,
+        dueBills,
+        collectedDueBills,
         manualTotal: entry.manualTotal,
         systemTotal,
         difference,
@@ -251,14 +274,22 @@ export async function POST(request: Request) {
         const counterFlow = Number(entry.counterFlow) || 0;
         const totalDue = Number(entry.totalDue) || 0;
         const collectedDue = Number(entry.collectedDue) || 0;
-        const dueBillNo = entry.dueBillNo || null;
-        const dueBillName = entry.dueBillName || null;
-        const dueBillAmount = Number(entry.dueBillAmount) || 0;
-        const dueBillMobile = entry.dueBillMobile || null;
-        const collectedDueBillNo = entry.collectedDueBillNo || null;
-        const collectedDueBillName = entry.collectedDueBillName || null;
-        const collectedDueBillMobile = entry.collectedDueBillMobile || null;
         const manualTotal = Number(entry.manualTotal) || 0;
+
+        // Multi-entry arrays (preferred); fall back to legacy single fields
+        const dueBills: { billNo: string; name: string; amount: number; mobile: string }[] =
+          Array.isArray(entry.dueBills) ? entry.dueBills : [];
+        const collectedDueBills: { billNo: string; name: string; mobile: string }[] =
+          Array.isArray(entry.collectedDueBills) ? entry.collectedDueBills : [];
+
+        // Legacy single fields — populated from first array element for backward compat
+        const dueBillNo = dueBills[0]?.billNo || entry.dueBillNo || null;
+        const dueBillName = dueBills[0]?.name || entry.dueBillName || null;
+        const dueBillAmount = dueBills[0]?.amount ?? (Number(entry.dueBillAmount) || 0);
+        const dueBillMobile = dueBills[0]?.mobile || entry.dueBillMobile || null;
+        const collectedDueBillNo = collectedDueBills[0]?.billNo || entry.collectedDueBillNo || null;
+        const collectedDueBillName = collectedDueBills[0]?.name || entry.collectedDueBillName || null;
+        const collectedDueBillMobile = collectedDueBills[0]?.mobile || entry.collectedDueBillMobile || null;
 
         // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED)
         const systemTotal = cash + gpay + card + counterFlow + totalDue;
@@ -293,6 +324,8 @@ export async function POST(request: Request) {
             collectedDueBillNo,
             collectedDueBillName,
             collectedDueBillMobile,
+            dueBillsJson: dueBills,
+            collectedDueBillsJson: collectedDueBills,
             manualTotal,
             systemTotal,
             difference,
@@ -312,6 +345,8 @@ export async function POST(request: Request) {
             collectedDueBillNo,
             collectedDueBillName,
             collectedDueBillMobile,
+            dueBillsJson: dueBills,
+            collectedDueBillsJson: collectedDueBills,
             manualTotal,
             systemTotal,
             difference,

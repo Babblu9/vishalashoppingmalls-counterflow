@@ -9,7 +9,22 @@ import {
   ChevronDown,
   ChevronRight,
   Phone,
+  Plus,
+  X,
 } from "lucide-react";
+
+export interface DueBillItem {
+  billNo: string;
+  name: string;
+  amount: number;
+  mobile: string;
+}
+
+export interface CollectedDueBillItem {
+  billNo: string;
+  name: string;
+  mobile: string;
+}
 
 export interface ReportEntryData {
   id?: string;
@@ -21,15 +36,18 @@ export interface ReportEntryData {
   counterFlow: number;
   totalDue: number;
   collectedDue: number;
-  // Due Created details
+  // Due Created details (legacy single-entry — kept for backward compat)
   dueBillNo?: string;
   dueBillName?: string;
   dueBillAmount?: number;
   dueBillMobile?: string;
-  // Due Collected details
+  // Due Collected details (legacy single-entry)
   collectedDueBillNo?: string;
   collectedDueBillName?: string;
   collectedDueBillMobile?: string;
+  // Multi-entry arrays (preferred over legacy fields)
+  dueBills?: DueBillItem[];
+  collectedDueBills?: CollectedDueBillItem[];
   manualTotal: number;
   systemTotal?: number;
   difference?: number;
@@ -77,10 +95,14 @@ function isDueAllowed(counterName: string, branchName?: string): boolean {
 /** Returns true if a due entry is missing required detail fields */
 function hasMissingDueDetails(row: ReportEntryData): boolean {
   if ((row.totalDue || 0) > 0) {
-    if (!row.dueBillNo?.trim() || !row.dueBillName?.trim() || !row.dueBillMobile?.trim()) return true;
+    const bills = row.dueBills || [];
+    if (bills.length === 0) return true;
+    if (bills.some((b) => !b.billNo?.trim() || !b.name?.trim() || !b.mobile?.trim())) return true;
   }
   if ((row.collectedDue || 0) > 0) {
-    if (!row.collectedDueBillNo?.trim() || !row.collectedDueBillName?.trim() || !row.collectedDueBillMobile?.trim()) return true;
+    const bills = row.collectedDueBills || [];
+    if (bills.length === 0) return true;
+    if (bills.some((b) => !b.billNo?.trim() || !b.name?.trim() || !b.mobile?.trim())) return true;
   }
   return false;
 }
@@ -196,6 +218,61 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
   };
 
   const fmt = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+
+  // ── Multi-entry due bill handlers ────────────────────────────────────────────
+
+  const handleAddDueBill = useCallback((rIdx: number) => {
+    if (isReadOnly) return;
+    const updated = [...data];
+    const bills = [...(updated[rIdx].dueBills || []), { billNo: "", name: "", amount: 0, mobile: "" }];
+    updated[rIdx] = { ...updated[rIdx], dueBills: bills };
+    onChange(updated);
+  }, [data, isReadOnly, onChange]);
+
+  const handleRemoveDueBill = useCallback((rIdx: number, bIdx: number) => {
+    if (isReadOnly) return;
+    const updated = [...data];
+    const bills = (updated[rIdx].dueBills || []).filter((_, i) => i !== bIdx);
+    updated[rIdx] = { ...updated[rIdx], dueBills: bills };
+    onChange(updated);
+  }, [data, isReadOnly, onChange]);
+
+  const handleDueBillChange = useCallback((rIdx: number, bIdx: number, field: keyof DueBillItem, value: string) => {
+    if (isReadOnly) return;
+    const updated = [...data];
+    const bills = [...(updated[rIdx].dueBills || [])];
+    bills[bIdx] = {
+      ...bills[bIdx],
+      [field]: field === "amount" ? (parseFloat(value.replace(/[^0-9.-]/g, "")) || 0) : value,
+    };
+    updated[rIdx] = { ...updated[rIdx], dueBills: bills };
+    onChange(updated);
+  }, [data, isReadOnly, onChange]);
+
+  const handleAddCollectedBill = useCallback((rIdx: number) => {
+    if (isReadOnly) return;
+    const updated = [...data];
+    const bills = [...(updated[rIdx].collectedDueBills || []), { billNo: "", name: "", mobile: "" }];
+    updated[rIdx] = { ...updated[rIdx], collectedDueBills: bills };
+    onChange(updated);
+  }, [data, isReadOnly, onChange]);
+
+  const handleRemoveCollectedBill = useCallback((rIdx: number, bIdx: number) => {
+    if (isReadOnly) return;
+    const updated = [...data];
+    const bills = (updated[rIdx].collectedDueBills || []).filter((_, i) => i !== bIdx);
+    updated[rIdx] = { ...updated[rIdx], collectedDueBills: bills };
+    onChange(updated);
+  }, [data, isReadOnly, onChange]);
+
+  const handleCollectedBillChange = useCallback((rIdx: number, bIdx: number, field: keyof CollectedDueBillItem, value: string) => {
+    if (isReadOnly) return;
+    const updated = [...data];
+    const bills = [...(updated[rIdx].collectedDueBills || [])];
+    bills[bIdx] = { ...bills[bIdx], [field]: value };
+    updated[rIdx] = { ...updated[rIdx], collectedDueBills: bills };
+    onChange(updated);
+  }, [data, isReadOnly, onChange]);
 
   return (
     <div className="w-full flex flex-col gap-6">
@@ -382,72 +459,97 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                                 <span className="text-[10px] font-bold text-[#1B8A7A] uppercase tracking-widest">
                                   Due Created Details
                                 </span>
-                                {(row.totalDue || 0) > 0 && (!row.dueBillNo?.trim() || !row.dueBillName?.trim() || !row.dueBillMobile?.trim()) && (
+                                {!isReadOnly && (
+                                  <button
+                                    onClick={() => handleAddDueBill(rIdx)}
+                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] bg-[#1B8A7A]/10 text-[#1B8A7A] hover:bg-[#1B8A7A]/20 border border-[#1B8A7A]/30"
+                                  >
+                                    <Plus size={9} /> Add Bill
+                                  </button>
+                                )}
+                                {(row.totalDue || 0) > 0 && (row.dueBills || []).length === 0 && (
                                   <span className="text-[9px] text-red-500 font-semibold">* required</span>
                                 )}
                               </div>
-                              <div className="flex items-center gap-3 flex-wrap">
-                                <div className="flex items-center gap-2">
-                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Bill No:</label>
-                                  <input
-                                    type="text"
-                                    value={row.dueBillNo || ""}
-                                    onChange={(e) => handleCellChange(rIdx, "dueBillNo", e.target.value, true)}
-                                    disabled={isReadOnly}
-                                    placeholder="e.g. BL-001"
-                                    className={`w-28 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
-                                      (row.totalDue || 0) > 0 && !row.dueBillNo?.trim()
-                                        ? "border-red-400"
-                                        : "border-[#E8D5B0]"
-                                    }`}
-                                  />
+                              {(row.dueBills || []).length === 0 ? (
+                                <p className="text-[9px] text-[#9A7E6A] italic">
+                                  {isReadOnly ? "No bills recorded." : "Click \"+ Add Bill\" to add a due bill entry."}
+                                </p>
+                              ) : (
+                                <div className="flex flex-col gap-2">
+                                  {(row.dueBills || []).map((bill, bIdx) => {
+                                    const billMissingFields = (row.totalDue || 0) > 0 && (!bill.billNo?.trim() || !bill.name?.trim() || !bill.mobile?.trim());
+                                    return (
+                                      <div key={bIdx} className="flex items-center gap-3 flex-wrap">
+                                        <span className="text-[9px] font-bold text-[#9A7E6A] w-4">#{bIdx + 1}</span>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Bill No:</label>
+                                          <input
+                                            type="text"
+                                            value={bill.billNo}
+                                            onChange={(e) => handleDueBillChange(rIdx, bIdx, "billNo", e.target.value)}
+                                            disabled={isReadOnly}
+                                            placeholder="e.g. BL-001"
+                                            className={`w-28 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                              billMissingFields && !bill.billNo?.trim() ? "border-red-400" : "border-[#E8D5B0]"
+                                            }`}
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Name:</label>
+                                          <input
+                                            type="text"
+                                            value={bill.name}
+                                            onChange={(e) => handleDueBillChange(rIdx, bIdx, "name", e.target.value)}
+                                            disabled={isReadOnly}
+                                            placeholder="Customer name"
+                                            className={`w-36 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                              billMissingFields && !bill.name?.trim() ? "border-red-400" : "border-[#E8D5B0]"
+                                            }`}
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap flex items-center gap-1">
+                                            <Phone size={9} /> Mobile:
+                                          </label>
+                                          <input
+                                            type="tel"
+                                            value={bill.mobile}
+                                            onChange={(e) => handleDueBillChange(rIdx, bIdx, "mobile", e.target.value)}
+                                            disabled={isReadOnly}
+                                            placeholder="10-digit mobile"
+                                            maxLength={10}
+                                            className={`w-32 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                              billMissingFields && !bill.mobile?.trim() ? "border-red-400" : "border-[#E8D5B0]"
+                                            }`}
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Amount:</label>
+                                          <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={bill.amount || ""}
+                                            onChange={(e) => handleDueBillChange(rIdx, bIdx, "amount", e.target.value)}
+                                            disabled={isReadOnly}
+                                            placeholder="0"
+                                            className="w-24 bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] text-right focus:outline-none focus:border-[#C9A227] disabled:opacity-50"
+                                          />
+                                        </div>
+                                        {!isReadOnly && (
+                                          <button
+                                            onClick={() => handleRemoveDueBill(rIdx, bIdx)}
+                                            className="text-red-400 hover:text-red-600 p-0.5 rounded hover:bg-red-50"
+                                            title="Remove this bill"
+                                          >
+                                            <X size={12} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Name:</label>
-                                  <input
-                                    type="text"
-                                    value={row.dueBillName || ""}
-                                    onChange={(e) => handleCellChange(rIdx, "dueBillName", e.target.value, true)}
-                                    disabled={isReadOnly}
-                                    placeholder="Customer name"
-                                    className={`w-36 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
-                                      (row.totalDue || 0) > 0 && !row.dueBillName?.trim()
-                                        ? "border-red-400"
-                                        : "border-[#E8D5B0]"
-                                    }`}
-                                  />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap flex items-center gap-1">
-                                    <Phone size={9} /> Mobile:
-                                  </label>
-                                  <input
-                                    type="tel"
-                                    value={row.dueBillMobile || ""}
-                                    onChange={(e) => handleCellChange(rIdx, "dueBillMobile", e.target.value, true)}
-                                    disabled={isReadOnly}
-                                    placeholder="10-digit mobile"
-                                    maxLength={10}
-                                    className={`w-32 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
-                                      (row.totalDue || 0) > 0 && !row.dueBillMobile?.trim()
-                                        ? "border-red-400"
-                                        : "border-[#E8D5B0]"
-                                    }`}
-                                  />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Amount:</label>
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={row.dueBillAmount || ""}
-                                    onChange={(e) => handleCellChange(rIdx, "dueBillAmount", e.target.value)}
-                                    disabled={isReadOnly}
-                                    placeholder="0"
-                                    className="w-24 bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] text-right focus:outline-none focus:border-[#C9A227] disabled:opacity-50"
-                                  />
-                                </div>
-                              </div>
+                              )}
                             </div>
 
                             {/* Divider */}
@@ -459,60 +561,85 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                                 <span className="text-[10px] font-bold text-[#C9A227] uppercase tracking-widest">
                                   Due Collected Details
                                 </span>
-                                {(row.collectedDue || 0) > 0 && (!row.collectedDueBillNo?.trim() || !row.collectedDueBillName?.trim() || !row.collectedDueBillMobile?.trim()) && (
+                                {!isReadOnly && (
+                                  <button
+                                    onClick={() => handleAddCollectedBill(rIdx)}
+                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] bg-[#C9A227]/10 text-[#C9A227] hover:bg-[#C9A227]/20 border border-[#C9A227]/30"
+                                  >
+                                    <Plus size={9} /> Add Bill
+                                  </button>
+                                )}
+                                {(row.collectedDue || 0) > 0 && (row.collectedDueBills || []).length === 0 && (
                                   <span className="text-[9px] text-red-500 font-semibold">* required</span>
                                 )}
                               </div>
-                              <div className="flex items-center gap-3 flex-wrap">
-                                <div className="flex items-center gap-2">
-                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Bill No:</label>
-                                  <input
-                                    type="text"
-                                    value={row.collectedDueBillNo || ""}
-                                    onChange={(e) => handleCellChange(rIdx, "collectedDueBillNo", e.target.value, true)}
-                                    disabled={isReadOnly}
-                                    placeholder="e.g. BL-001"
-                                    className={`w-28 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
-                                      (row.collectedDue || 0) > 0 && !row.collectedDueBillNo?.trim()
-                                        ? "border-red-400"
-                                        : "border-[#E8D5B0]"
-                                    }`}
-                                  />
+                              {(row.collectedDueBills || []).length === 0 ? (
+                                <p className="text-[9px] text-[#9A7E6A] italic">
+                                  {isReadOnly ? "No bills recorded." : "Click \"+ Add Bill\" to add a collected bill entry."}
+                                </p>
+                              ) : (
+                                <div className="flex flex-col gap-2">
+                                  {(row.collectedDueBills || []).map((bill, bIdx) => {
+                                    const billMissingFields = (row.collectedDue || 0) > 0 && (!bill.billNo?.trim() || !bill.name?.trim() || !bill.mobile?.trim());
+                                    return (
+                                      <div key={bIdx} className="flex items-center gap-3 flex-wrap">
+                                        <span className="text-[9px] font-bold text-[#9A7E6A] w-4">#{bIdx + 1}</span>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Bill No:</label>
+                                          <input
+                                            type="text"
+                                            value={bill.billNo}
+                                            onChange={(e) => handleCollectedBillChange(rIdx, bIdx, "billNo", e.target.value)}
+                                            disabled={isReadOnly}
+                                            placeholder="e.g. BL-001"
+                                            className={`w-28 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                              billMissingFields && !bill.billNo?.trim() ? "border-red-400" : "border-[#E8D5B0]"
+                                            }`}
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Name:</label>
+                                          <input
+                                            type="text"
+                                            value={bill.name}
+                                            onChange={(e) => handleCollectedBillChange(rIdx, bIdx, "name", e.target.value)}
+                                            disabled={isReadOnly}
+                                            placeholder="Customer name"
+                                            className={`w-36 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                              billMissingFields && !bill.name?.trim() ? "border-red-400" : "border-[#E8D5B0]"
+                                            }`}
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap flex items-center gap-1">
+                                            <Phone size={9} /> Mobile:
+                                          </label>
+                                          <input
+                                            type="tel"
+                                            value={bill.mobile}
+                                            onChange={(e) => handleCollectedBillChange(rIdx, bIdx, "mobile", e.target.value)}
+                                            disabled={isReadOnly}
+                                            placeholder="10-digit mobile"
+                                            maxLength={10}
+                                            className={`w-32 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
+                                              billMissingFields && !bill.mobile?.trim() ? "border-red-400" : "border-[#E8D5B0]"
+                                            }`}
+                                          />
+                                        </div>
+                                        {!isReadOnly && (
+                                          <button
+                                            onClick={() => handleRemoveCollectedBill(rIdx, bIdx)}
+                                            className="text-red-400 hover:text-red-600 p-0.5 rounded hover:bg-red-50"
+                                            title="Remove this bill"
+                                          >
+                                            <X size={12} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Name:</label>
-                                  <input
-                                    type="text"
-                                    value={row.collectedDueBillName || ""}
-                                    onChange={(e) => handleCellChange(rIdx, "collectedDueBillName", e.target.value, true)}
-                                    disabled={isReadOnly}
-                                    placeholder="Customer name"
-                                    className={`w-36 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
-                                      (row.collectedDue || 0) > 0 && !row.collectedDueBillName?.trim()
-                                        ? "border-red-400"
-                                        : "border-[#E8D5B0]"
-                                    }`}
-                                  />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap flex items-center gap-1">
-                                    <Phone size={9} /> Mobile:
-                                  </label>
-                                  <input
-                                    type="tel"
-                                    value={row.collectedDueBillMobile || ""}
-                                    onChange={(e) => handleCellChange(rIdx, "collectedDueBillMobile", e.target.value, true)}
-                                    disabled={isReadOnly}
-                                    placeholder="10-digit mobile"
-                                    maxLength={10}
-                                    className={`w-32 bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] disabled:opacity-50 ${
-                                      (row.collectedDue || 0) > 0 && !row.collectedDueBillMobile?.trim()
-                                        ? "border-red-400"
-                                        : "border-[#E8D5B0]"
-                                    }`}
-                                  />
-                                </div>
-                              </div>
+                              )}
                             </div>
 
                           </div>
@@ -622,25 +749,36 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E8D5B0]">
-                  {data.filter((r) => (r.totalDue || 0) > 0 || r.dueBillNo || r.dueBillName).length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-3 py-4 text-center text-xs text-[#9A7E6A]">
-                        No due created entries.
-                      </td>
-                    </tr>
-                  ) : (
-                    data
-                      .filter((r) => (r.totalDue || 0) > 0 || r.dueBillNo || r.dueBillName)
-                      .map((r, i) => (
-                        <tr key={i} className="hover:bg-[#FDF6EE]">
-                          <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A]">{r.counterName}</td>
-                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.dueBillNo || "—"}</td>
-                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.dueBillName || "—"}</td>
-                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.dueBillMobile || "—"}</td>
-                          <td className="px-3 py-1.5 text-right text-xs font-bold text-[#1B8A7A]">{fmt(r.totalDue || 0)}</td>
+                  {(() => {
+                    // Build flat list: prefer dueBills array, fallback to legacy single fields
+                    const rows: { counterName: string; billNo: string; name: string; mobile: string; amount: number }[] = [];
+                    data.forEach((r) => {
+                      const bills = r.dueBills || [];
+                      if (bills.length > 0) {
+                        bills.forEach((b) => rows.push({ counterName: r.counterName, billNo: b.billNo, name: b.name, mobile: b.mobile, amount: b.amount }));
+                      } else if ((r.totalDue || 0) > 0 || r.dueBillNo || r.dueBillName) {
+                        rows.push({ counterName: r.counterName, billNo: r.dueBillNo || "", name: r.dueBillName || "", mobile: r.dueBillMobile || "", amount: r.totalDue || 0 });
+                      }
+                    });
+                    if (rows.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-4 text-center text-xs text-[#9A7E6A]">
+                            No due created entries.
+                          </td>
                         </tr>
-                      ))
-                  )}
+                      );
+                    }
+                    return rows.map((r, i) => (
+                      <tr key={i} className="hover:bg-[#FDF6EE]">
+                        <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A]">{r.counterName}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.billNo || "—"}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.name || "—"}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.mobile || "—"}</td>
+                        <td className="px-3 py-1.5 text-right text-xs font-bold text-[#1B8A7A]">{fmt(r.amount || 0)}</td>
+                      </tr>
+                    ));
+                  })()}
                 </tbody>
                 {data.some((r) => (r.totalDue || 0) > 0) && (
                   <tfoot>
@@ -667,29 +805,39 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                     <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Bill No</th>
                     <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Name</th>
                     <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Mobile</th>
-                    <th className="px-3 py-1.5 text-right text-[9px] font-bold text-[#9A7E6A] uppercase">Amount</th>
+                    <th className="px-3 py-1.5 text-right text-[9px] font-bold text-[#9A7E6A] uppercase">Amount Collected</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E8D5B0]">
-                  {data.filter((r) => (r.collectedDue || 0) > 0 || r.collectedDueBillNo || r.collectedDueBillName).length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-3 py-4 text-center text-xs text-[#9A7E6A]">
-                        No due collected entries.
-                      </td>
-                    </tr>
-                  ) : (
-                    data
-                      .filter((r) => (r.collectedDue || 0) > 0 || r.collectedDueBillNo || r.collectedDueBillName)
-                      .map((r, i) => (
-                        <tr key={i} className="hover:bg-[#FDF6EE]">
-                          <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A]">{r.counterName}</td>
-                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.collectedDueBillNo || "—"}</td>
-                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.collectedDueBillName || "—"}</td>
-                          <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.collectedDueBillMobile || "—"}</td>
-                          <td className="px-3 py-1.5 text-right text-xs font-bold text-[#C9A227]">{fmt(r.collectedDue || 0)}</td>
+                  {(() => {
+                    const rows: { counterName: string; billNo: string; name: string; mobile: string; amount: number }[] = [];
+                    data.forEach((r) => {
+                      const bills = r.collectedDueBills || [];
+                      if (bills.length > 0) {
+                        bills.forEach((b) => rows.push({ counterName: r.counterName, billNo: b.billNo, name: b.name, mobile: b.mobile, amount: r.collectedDue || 0 }));
+                      } else if ((r.collectedDue || 0) > 0 || r.collectedDueBillNo || r.collectedDueBillName) {
+                        rows.push({ counterName: r.counterName, billNo: r.collectedDueBillNo || "", name: r.collectedDueBillName || "", mobile: r.collectedDueBillMobile || "", amount: r.collectedDue || 0 });
+                      }
+                    });
+                    if (rows.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-4 text-center text-xs text-[#9A7E6A]">
+                            No due collected entries.
+                          </td>
                         </tr>
-                      ))
-                  )}
+                      );
+                    }
+                    return rows.map((r, i) => (
+                      <tr key={i} className="hover:bg-[#FDF6EE]">
+                        <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A]">{r.counterName}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.billNo || "—"}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.name || "—"}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.mobile || "—"}</td>
+                        <td className="px-3 py-1.5 text-right text-xs font-bold text-[#C9A227]">{fmt(r.amount || 0)}</td>
+                      </tr>
+                    ));
+                  })()}
                 </tbody>
                 {data.some((r) => (r.collectedDue || 0) > 0) && (
                   <tfoot>

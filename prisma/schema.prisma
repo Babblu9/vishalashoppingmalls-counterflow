@@ -83,6 +83,10 @@ model ReportEntry {
   collectedDueBillNo     String?
   collectedDueBillName   String?
   collectedDueBillMobile String?
+
+  // Multi-entry arrays (supersede the single-entry fields above)
+  dueBillsJson           Json    @default("[]")
+  collectedDueBillsJson  Json    @default("[]")
   
   // Computed values stored for fast indexing / snapshot auditing
   manualTotal  Float       @default(0)

@@ -194,17 +194,27 @@ export async function GET(request: Request) {
       if (report && report.entries.length > 0) {
         entriesData = report.entries
           .sort((a, b) => counterSort(a.counter.name, b.counter.name))
-          .map((e) => ({
-            counterName: e.counter.name,
-            cash: e.cash, gpay: e.gpay, card: e.card,
-            totalDue: e.totalDue, collectedDue: e.collectedDue,
-            counterFlow: e.counterFlow,
-            dueBillNo: e.dueBillNo || "", dueBillName: e.dueBillName || "", dueBillMobile: e.dueBillMobile || "",
-            collectedDueBillNo: e.collectedDueBillNo || "", collectedDueBillName: e.collectedDueBillName || "", collectedDueBillMobile: e.collectedDueBillMobile || "",
-            // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED)
-            systemTotal: e.cash + e.gpay + e.card + e.counterFlow + e.totalDue,
-            manualTotal: e.manualTotal,
-          }));
+          .map((e) => {
+            const rawDue = e.dueBillsJson as any[];
+            const dueBills = Array.isArray(rawDue) && rawDue.length > 0 ? rawDue : null;
+            const rawCol = e.collectedDueBillsJson as any[];
+            const colBills = Array.isArray(rawCol) && rawCol.length > 0 ? rawCol : null;
+            return {
+              counterName: e.counter.name,
+              cash: e.cash, gpay: e.gpay, card: e.card,
+              totalDue: e.totalDue, collectedDue: e.collectedDue,
+              counterFlow: e.counterFlow,
+              dueBillNo:   dueBills ? dueBills.map((b: any) => b.billNo || "").join("\n") : (e.dueBillNo || ""),
+              dueBillName: dueBills ? dueBills.map((b: any) => b.name   || "").join("\n") : (e.dueBillName || ""),
+              dueBillMobile: dueBills ? dueBills.map((b: any) => b.mobile || "").join("\n") : (e.dueBillMobile || ""),
+              collectedDueBillNo:     colBills ? colBills.map((b: any) => b.billNo || "").join("\n") : (e.collectedDueBillNo || ""),
+              collectedDueBillName:   colBills ? colBills.map((b: any) => b.name   || "").join("\n") : (e.collectedDueBillName || ""),
+              collectedDueBillMobile: colBills ? colBills.map((b: any) => b.mobile || "").join("\n") : (e.collectedDueBillMobile || ""),
+              // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED)
+              systemTotal: e.cash + e.gpay + e.card + e.counterFlow + e.totalDue,
+              manualTotal: e.manualTotal,
+            };
+          });
       } else {
         const counters = (countersByBranch.get(branch.id) ?? []).sort((a, b) => counterSort(a.name, b.name));
         entriesData = counters.map((c) => ({
@@ -247,7 +257,7 @@ export async function GET(request: Request) {
         for (const col of ["N", "O", "P"]) {
           ws.getCell(`${col}${r}`).border = allBorders();
           ws.getCell(`${col}${r}`).font = { name: "Segoe UI", size: 9 };
-          ws.getCell(`${col}${r}`).alignment = { vertical: "middle", horizontal: "left" };
+          ws.getCell(`${col}${r}`).alignment = { vertical: "middle", horizontal: "left", wrapText: true };
         }
         // Due Collected details
         ws.getCell(`R${r}`).value = entry.collectedDueBillNo;
@@ -256,7 +266,7 @@ export async function GET(request: Request) {
         for (const col of ["R", "S", "T"]) {
           ws.getCell(`${col}${r}`).border = allBorders();
           ws.getCell(`${col}${r}`).font = { name: "Segoe UI", size: 9 };
-          ws.getCell(`${col}${r}`).alignment = { vertical: "middle", horizontal: "left" };
+          ws.getCell(`${col}${r}`).alignment = { vertical: "middle", horizontal: "left", wrapText: true };
         }
       });
 
