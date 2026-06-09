@@ -82,7 +82,7 @@ const EMPTY_FORM: AdminFormState = { username: "", name: "", password: "", branc
 
 export default function SuperAdminDashboard({ session }: SuperAdminDashboardProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"overview" | "liveview" | "logs" | "admins" | "backup">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "liveview" | "logs" | "admins" | "backup">("liveview");
   const [selectedDate, setSelectedDate] = useState("");
   const [branches, setBranches] = useState<any[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>("all");
