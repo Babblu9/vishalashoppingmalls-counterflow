@@ -113,7 +113,10 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
   const [cleanupPreview, setCleanupPreview] = useState<{ reports: number; auditLogs: number } | null>(null);
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<{ reports: number; auditLogs: number } | null>(null);
-  
+
+  // Live Verify state (UI-only, not persisted to DB)
+  const [verifyOpen, setVerifyOpen] = useState<Record<string, boolean>>({});
+  const [verifyAmounts, setVerifyAmounts] = useState<Record<string, Record<string, string>>>({});
 
   useEffect(() => { setSelectedDate(getBusinessDate(new Date())); }, []);
 
@@ -617,6 +620,17 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                             )}
                           </span>
                         )}
+                        <button
+                          onClick={() => setVerifyOpen((prev) => ({ ...prev, [branch.branchId]: !prev[branch.branchId] }))}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+                            verifyOpen[branch.branchId]
+                              ? "bg-[#C9A227] border-[#C9A227] text-[#1A0A0A]"
+                              : "bg-white/10 border-white/20 text-white/70 hover:bg-white/20 hover:text-white"
+                          }`}
+                        >
+                          <ShieldCheck size={11} />
+                          {verifyOpen[branch.branchId] ? "Hide Verify" : "Verify"}
+                        </button>
                       </div>
                     </div>
 
@@ -650,6 +664,73 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                         ))}
                       </div>
                     </div>
+
+                    {/* Manual Verification panel — shown only when Verify is toggled on */}
+                    {verifyOpen[branch.branchId] && (
+                      <div className="px-5 pb-4">
+                        <div className="rounded-lg border border-[#C9A227]/40 overflow-hidden">
+                          <div className="flex items-center justify-between px-4 py-2.5 bg-[#C9A227]/10 border-b border-[#C9A227]/30">
+                            <div className="flex items-center gap-1.5">
+                              <ShieldCheck size={12} className="text-[#8B6014]" />
+                              <p className="text-xs font-bold text-[#8B6014] uppercase tracking-wider">Manual Verification</p>
+                            </div>
+                            <button
+                              onClick={() => setVerifyAmounts((prev) => ({ ...prev, [branch.branchId]: {} }))}
+                              className="text-[10px] font-bold text-[#9A7E6A] hover:text-[#5C4A3A] uppercase tracking-wider cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                          <table className="w-full text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b border-[#E8D5B0] bg-[#FDF6EE]">
+                                <th className="py-2 px-4 text-left font-bold text-[#9A7E6A] uppercase tracking-wider">Mode</th>
+                                <th className="py-2 px-4 text-right font-bold text-[#9A7E6A] uppercase tracking-wider">System Total</th>
+                                <th className="py-2 px-4 text-right font-bold text-[#9A7E6A] uppercase tracking-wider">Manual Count</th>
+                                <th className="py-2 px-4 text-right font-bold text-[#9A7E6A] uppercase tracking-wider">Difference</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#E8D5B0]">
+                              {[
+                                { key: "cash",         label: "CASH",          sysVal: branch.totals.cash         },
+                                { key: "gpay",         label: "G.PAY",         sysVal: branch.totals.gpay         },
+                                { key: "card",         label: "CARD",          sysVal: branch.totals.card         },
+                                { key: "counterFlow",  label: "COUNTER FLOW",  sysVal: branch.totals.counterFlow  },
+                                { key: "collectedDue", label: "DUE COLLECTED", sysVal: branch.totals.collectedDue },
+                              ].map(({ key, label, sysVal }) => {
+                                const rawVal = verifyAmounts[branch.branchId]?.[key] ?? "";
+                                const manualVal = rawVal === "" ? null : parseFloat(rawVal);
+                                const diff = manualVal !== null ? manualVal - sysVal : null;
+                                const isMatch = diff === 0;
+                                return (
+                                  <tr key={key} className="hover:bg-[#FDF6EE] transition-colors">
+                                    <td className="py-2.5 px-4 font-bold text-[#5C4A3A] uppercase tracking-wide">{label}</td>
+                                    <td className="py-2.5 px-4 text-right font-semibold text-[#1A0A0A]">{formatCurrency(sysVal)}</td>
+                                    <td className="py-2.5 px-4 text-right">
+                                      <input
+                                        type="number"
+                                        value={rawVal}
+                                        onChange={(e) => setVerifyAmounts((prev) => ({
+                                          ...prev,
+                                          [branch.branchId]: { ...(prev[branch.branchId] ?? {}), [key]: e.target.value },
+                                        }))}
+                                        placeholder="Enter amount"
+                                        className="w-36 text-right px-2 py-1 border border-[#E8D5B0] rounded bg-white text-xs font-semibold focus:outline-none focus:border-[#C9A227] focus:ring-1 focus:ring-[#C9A227]/30"
+                                      />
+                                    </td>
+                                    <td className={`py-2.5 px-4 text-right font-extrabold ${
+                                      diff === null ? "text-[#9A7E6A]" : isMatch ? "text-[#1B8A7A]" : "text-red-600"
+                                    }`}>
+                                      {diff === null ? "—" : isMatch ? "Match" : formatCurrency(diff)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Discrepancy alert — only shown when +/- is non-zero */}
                     {hasDiff && branchAlerts.length > 0 && (
