@@ -24,6 +24,7 @@ export interface CollectedDueBillItem {
   billNo: string;
   name: string;
   mobile: string;
+  amount: number;
 }
 
 export interface ReportEntryData {
@@ -252,7 +253,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
   const handleAddCollectedBill = useCallback((rIdx: number) => {
     if (isReadOnly) return;
     const updated = [...data];
-    const bills = [...(updated[rIdx].collectedDueBills || []), { billNo: "", name: "", mobile: "" }];
+    const bills = [...(updated[rIdx].collectedDueBills || []), { billNo: "", name: "", mobile: "", amount: 0 }];
     updated[rIdx] = { ...updated[rIdx], collectedDueBills: bills };
     onChange(updated);
   }, [data, isReadOnly, onChange]);
@@ -269,7 +270,10 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
     if (isReadOnly) return;
     const updated = [...data];
     const bills = [...(updated[rIdx].collectedDueBills || [])];
-    bills[bIdx] = { ...bills[bIdx], [field]: value };
+    bills[bIdx] = {
+      ...bills[bIdx],
+      [field]: field === "amount" ? (parseFloat(value.replace(/[^0-9.-]/g, "")) || 0) : value,
+    };
     updated[rIdx] = { ...updated[rIdx], collectedDueBills: bills };
     onChange(updated);
   }, [data, isReadOnly, onChange]);
@@ -626,6 +630,18 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                                             }`}
                                           />
                                         </div>
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-[10px] text-[#9A7E6A] font-semibold whitespace-nowrap">Amount:</label>
+                                          <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={bill.amount || ""}
+                                            onChange={(e) => handleCollectedBillChange(rIdx, bIdx, "amount", e.target.value)}
+                                            disabled={isReadOnly}
+                                            placeholder="0"
+                                            className="w-24 bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] text-right focus:outline-none focus:border-[#C9A227] disabled:opacity-50"
+                                          />
+                                        </div>
                                         {!isReadOnly && (
                                           <button
                                             onClick={() => handleRemoveCollectedBill(rIdx, bIdx)}
@@ -792,58 +808,170 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
             </div>
           </div>
 
-          {/* Due Collected section */}
+          {/* Due Collected section — inline-editable for due-access counters only */}
           <div>
             <div className="px-4 py-1.5 bg-[#FEF3C7] text-[10px] font-bold text-[#92400E] uppercase tracking-widest">
               Due Collected
             </div>
-            <div className="overflow-y-auto max-h-[180px]">
+            <div className="overflow-y-auto max-h-[220px]">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-[#FDF6EE] border-b border-[#E8D5B0]">
                   <tr>
-                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Counter</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase w-20">Counter</th>
                     <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Bill No</th>
                     <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Name</th>
                     <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Mobile</th>
-                    <th className="px-3 py-1.5 text-right text-[9px] font-bold text-[#9A7E6A] uppercase">Amount Collected</th>
+                    <th className="px-3 py-1.5 text-right text-[9px] font-bold text-[#9A7E6A] uppercase">Amount</th>
+                    {!isReadOnly && <th className="px-1 py-1.5 w-12"></th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E8D5B0]">
                   {(() => {
-                    const rows: { counterName: string; billNo: string; name: string; mobile: string; amount: number }[] = [];
-                    data.forEach((r) => {
-                      const bills = r.collectedDueBills || [];
-                      if (bills.length > 0) {
-                        bills.forEach((b) => rows.push({ counterName: r.counterName, billNo: b.billNo, name: b.name, mobile: b.mobile, amount: r.collectedDue || 0 }));
-                      } else if ((r.collectedDue || 0) > 0 || r.collectedDueBillNo || r.collectedDueBillName) {
-                        rows.push({ counterName: r.counterName, billNo: r.collectedDueBillNo || "", name: r.collectedDueBillName || "", mobile: r.collectedDueBillMobile || "", amount: r.collectedDue || 0 });
-                      }
-                    });
-                    if (rows.length === 0) {
+                    const allowedRows = processedData
+                      .map((r, idx) => ({ r, idx }))
+                      .filter(({ r }) => isDueAllowed(r.counterName, branchName));
+
+                    if (allowedRows.length === 0) {
                       return (
                         <tr>
-                          <td colSpan={5} className="px-3 py-4 text-center text-xs text-[#9A7E6A]">
-                            No due collected entries.
+                          <td colSpan={isReadOnly ? 5 : 6} className="px-3 py-4 text-center text-xs text-[#9A7E6A]">
+                            No counters with due collected access.
                           </td>
                         </tr>
                       );
                     }
-                    return rows.map((r, i) => (
-                      <tr key={i} className="hover:bg-[#FDF6EE]">
-                        <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A]">{r.counterName}</td>
-                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.billNo || "—"}</td>
-                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.name || "—"}</td>
-                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.mobile || "—"}</td>
-                        <td className="px-3 py-1.5 text-right text-xs font-bold text-[#C9A227]">{fmt(r.amount || 0)}</td>
-                      </tr>
-                    ));
+
+                    return allowedRows.flatMap(({ r, idx: rIdx }) => {
+                      const bills = r.collectedDueBills || [];
+
+                      if (bills.length === 0) {
+                        return [(
+                          <tr key={`${r.counterId}-empty`} className="hover:bg-[#FDF6EE]">
+                            <td className="px-3 py-2 text-xs font-bold text-[#8B1A1A]">{r.counterName}</td>
+                            <td colSpan={3} className="px-3 py-2">
+                              {!isReadOnly ? (
+                                <button
+                                  onClick={() => handleAddCollectedBill(rIdx)}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] bg-[#C9A227]/10 text-[#C9A227] hover:bg-[#C9A227]/20 border border-[#C9A227]/30"
+                                >
+                                  <Plus size={9} /> Add Bill
+                                </button>
+                              ) : (
+                                <span className="text-xs text-[#9A7E6A] italic">No bills recorded.</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs text-[#9A7E6A]">—</td>
+                            {!isReadOnly && <td></td>}
+                          </tr>
+                        )];
+                      }
+
+                      return bills.map((bill, bIdx) => {
+                        const billMissingFields =
+                          (r.collectedDue || 0) > 0 &&
+                          (!bill.billNo?.trim() || !bill.name?.trim() || !bill.mobile?.trim());
+                        const isLastBill = bIdx === bills.length - 1;
+
+                        return (
+                          <tr key={`${r.counterId}-${bIdx}`} className="hover:bg-[#FDF6EE]">
+                            <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A] align-top">
+                              {bIdx === 0 ? r.counterName : ""}
+                            </td>
+                            <td className="px-2 py-1">
+                              {!isReadOnly ? (
+                                <input
+                                  type="text"
+                                  value={bill.billNo}
+                                  onChange={(e) => handleCollectedBillChange(rIdx, bIdx, "billNo", e.target.value)}
+                                  placeholder="e.g. BL-001"
+                                  className={`w-full bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] ${
+                                    billMissingFields && !bill.billNo?.trim() ? "border-red-400" : "border-[#E8D5B0]"
+                                  }`}
+                                />
+                              ) : (
+                                <span className="text-xs text-[#5C4A3A]">{bill.billNo || "—"}</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1">
+                              {!isReadOnly ? (
+                                <input
+                                  type="text"
+                                  value={bill.name}
+                                  onChange={(e) => handleCollectedBillChange(rIdx, bIdx, "name", e.target.value)}
+                                  placeholder="Customer name"
+                                  className={`w-full bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] ${
+                                    billMissingFields && !bill.name?.trim() ? "border-red-400" : "border-[#E8D5B0]"
+                                  }`}
+                                />
+                              ) : (
+                                <span className="text-xs text-[#5C4A3A]">{bill.name || "—"}</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1">
+                              {!isReadOnly ? (
+                                <input
+                                  type="tel"
+                                  value={bill.mobile}
+                                  onChange={(e) => handleCollectedBillChange(rIdx, bIdx, "mobile", e.target.value)}
+                                  placeholder="10-digit"
+                                  maxLength={10}
+                                  className={`w-full bg-white border rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] ${
+                                    billMissingFields && !bill.mobile?.trim() ? "border-red-400" : "border-[#E8D5B0]"
+                                  }`}
+                                />
+                              ) : (
+                                <span className="text-xs text-[#5C4A3A]">{bill.mobile || "—"}</span>
+                              )}
+                            </td>
+                            {/* Per-bill Amount — editable */}
+                            <td className="px-2 py-1">
+                              {!isReadOnly ? (
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={bill.amount || ""}
+                                  onChange={(e) => handleCollectedBillChange(rIdx, bIdx, "amount", e.target.value)}
+                                  placeholder="0"
+                                  className="w-full bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] text-right focus:outline-none focus:border-[#C9A227]"
+                                />
+                              ) : (
+                                <span className="text-xs font-bold text-[#C9A227] text-right block">{fmt(bill.amount || 0)}</span>
+                              )}
+                            </td>
+                            {!isReadOnly && (
+                              <td className="px-1 py-1">
+                                <div className="flex items-center gap-0.5 justify-center">
+                                  <button
+                                    onClick={() => handleRemoveCollectedBill(rIdx, bIdx)}
+                                    className="text-red-400 hover:text-red-600 p-0.5 rounded hover:bg-red-50"
+                                    title="Remove this bill"
+                                  >
+                                    <X size={11} />
+                                  </button>
+                                  {isLastBill && (
+                                    <button
+                                      onClick={() => handleAddCollectedBill(rIdx)}
+                                      className="text-[#C9A227] hover:text-[#8B1A1A] p-0.5 rounded hover:bg-[#FEF3C7]"
+                                      title="Add another bill"
+                                    >
+                                      <Plus size={11} />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      });
+                    });
                   })()}
                 </tbody>
                 {data.some((r) => (r.collectedDue || 0) > 0) && (
                   <tfoot>
                     <tr className="border-t-2 border-[#E8D5B0] bg-[#FDF6EE]">
-                      <td colSpan={4} className="px-3 py-2 text-xs font-extrabold text-[#5C4A3A] uppercase">Total</td>
+                      <td colSpan={4} className="px-3 py-2 text-xs font-extrabold text-[#5C4A3A] uppercase">Total Collected</td>
                       <td className="px-3 py-2 text-right text-xs font-extrabold text-[#C9A227]">{fmt(totals.collectedDue)}</td>
+                      {!isReadOnly && <td></td>}
                     </tr>
                   </tfoot>
                 )}

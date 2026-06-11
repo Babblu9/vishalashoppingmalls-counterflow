@@ -79,13 +79,15 @@ export async function GET(request: Request) {
           collectedDue: entry.collectedDue,
           counterFlow: entry.counterFlow,
           // Due Created details — join multiple bills with newline
-          dueBillNo:   dueBills ? dueBills.map((b: any) => b.billNo || "").join("\n") : (entry.dueBillNo || ""),
-          dueBillName: dueBills ? dueBills.map((b: any) => b.name   || "").join("\n") : (entry.dueBillName || ""),
-          dueBillMobile: dueBills ? dueBills.map((b: any) => b.mobile || "").join("\n") : (entry.dueBillMobile || ""),
+          dueBillNo:     dueBills ? dueBills.map((b: any) => b.billNo  || "").join("\n") : (entry.dueBillNo   || ""),
+          dueBillName:   dueBills ? dueBills.map((b: any) => b.name    || "").join("\n") : (entry.dueBillName || ""),
+          dueBillMobile: dueBills ? dueBills.map((b: any) => b.mobile  || "").join("\n") : (entry.dueBillMobile || ""),
+          dueBillAmount: dueBills ? dueBills.map((b: any) => b.amount  || 0).join("\n")  : (entry.dueBillAmount || 0),
           // Due Collected details
-          collectedDueBillNo:     colBills ? colBills.map((b: any) => b.billNo || "").join("\n") : (entry.collectedDueBillNo || ""),
+          collectedDueBillNo:     colBills ? colBills.map((b: any) => b.billNo || "").join("\n") : (entry.collectedDueBillNo   || ""),
           collectedDueBillName:   colBills ? colBills.map((b: any) => b.name   || "").join("\n") : (entry.collectedDueBillName || ""),
           collectedDueBillMobile: colBills ? colBills.map((b: any) => b.mobile || "").join("\n") : (entry.collectedDueBillMobile || ""),
+          collectedDueBillAmount: colBills ? colBills.map((b: any) => b.amount || 0).join("\n")  : "",
           systemTotal,
           manualTotal: entry.manualTotal,
         };
@@ -197,8 +199,8 @@ export async function GET(request: Request) {
     scHeader.alignment = { vertical: "middle", horizontal: "center" };
     scHeader.border = allBorders("334155");
 
-    // Col N–P: DUE CREATED DETAILS block
-    ws.mergeCells("N5:P5");
+    // Col N–Q: DUE CREATED DETAILS block (BILL NO, NAME, MOBILE, AMOUNT)
+    ws.mergeCells("N5:Q5");
     const dcHeader = ws.getCell("N5");
     dcHeader.value = "DUE CREATED DETAILS";
     dcHeader.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
@@ -206,9 +208,9 @@ export async function GET(request: Request) {
     dcHeader.alignment = { vertical: "middle", horizontal: "center" };
     dcHeader.border = allBorders("334155");
 
-    // Col R–T: DUE COLLECTED DETAILS block
-    ws.mergeCells("R5:T5");
-    const dlHeader = ws.getCell("R5");
+    // Col S–V: DUE COLLECTED DETAILS block (BILL NO, NAME, MOBILE, AMOUNT)
+    ws.mergeCells("S5:V5");
+    const dlHeader = ws.getCell("S5");
     dlHeader.value = "DUE COLLECTED DETAILS";
     dlHeader.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
     dlHeader.fill = headerFill("92400E");
@@ -217,19 +219,19 @@ export async function GET(request: Request) {
 
     // Sub-headers row 6
     ws.getRow(6).height = 18;
-    // Due Created sub-headers (N6, O6, P6)
-    ["N6", "O6", "P6"].forEach((addr, i) => {
+    // Due Created sub-headers (N6, O6, P6, Q6)
+    ["N6", "O6", "P6", "Q6"].forEach((addr, i) => {
       const cell = ws.getCell(addr);
-      cell.value = ["BILL NO", "NAME", "MOBILE"][i];
+      cell.value = ["BILL NO", "NAME", "MOBILE", "AMOUNT"][i];
       cell.font = { name: "Segoe UI", size: 8, bold: true, color: { argb: "1F2937" } };
       cell.fill = headerFill("CCFBF1");
       cell.alignment = { vertical: "middle", horizontal: "center" };
       cell.border = allBorders("1B8A7A");
     });
-    // Due Collected sub-headers (R6, S6, T6)
-    ["R6", "S6", "T6"].forEach((addr, i) => {
+    // Due Collected sub-headers (S6, T6, U6, V6)
+    ["S6", "T6", "U6", "V6"].forEach((addr, i) => {
       const cell = ws.getCell(addr);
-      cell.value = ["BILL NO", "NAME", "MOBILE"][i];
+      cell.value = ["BILL NO", "NAME", "MOBILE", "AMOUNT"][i];
       cell.font = { name: "Segoe UI", size: 8, bold: true, color: { argb: "1F2937" } };
       cell.fill = headerFill("FEF3C7");
       cell.alignment = { vertical: "middle", horizontal: "center" };
@@ -279,10 +281,11 @@ export async function GET(request: Request) {
         }
       }
 
-      // Due Created detail columns N–P
+      // Due Created detail columns N–Q (BILL NO, NAME, MOBILE, AMOUNT)
       ws.getCell(`N${r}`).value = entry.dueBillNo || "";
       ws.getCell(`O${r}`).value = entry.dueBillName || "";
       ws.getCell(`P${r}`).value = entry.dueBillMobile || "";
+      ws.getCell(`Q${r}`).value = entry.dueBillAmount || "";
 
       for (const col of ["N", "O", "P"]) {
         const cell = ws.getCell(`${col}${r}`);
@@ -290,18 +293,27 @@ export async function GET(request: Request) {
         cell.font = { name: "Segoe UI", size: 9 };
         cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
       }
+      // AMOUNT column (Q) — right-aligned number
+      ws.getCell(`Q${r}`).border = allBorders("1B8A7A");
+      ws.getCell(`Q${r}`).font = { name: "Segoe UI", size: 9 };
+      ws.getCell(`Q${r}`).alignment = { vertical: "middle", horizontal: "right", wrapText: true };
 
-      // Due Collected detail columns R–T
-      ws.getCell(`R${r}`).value = entry.collectedDueBillNo || "";
-      ws.getCell(`S${r}`).value = entry.collectedDueBillName || "";
-      ws.getCell(`T${r}`).value = entry.collectedDueBillMobile || "";
+      // Due Collected detail columns S–V (BILL NO, NAME, MOBILE, AMOUNT)
+      ws.getCell(`S${r}`).value = entry.collectedDueBillNo || "";
+      ws.getCell(`T${r}`).value = entry.collectedDueBillName || "";
+      ws.getCell(`U${r}`).value = entry.collectedDueBillMobile || "";
+      ws.getCell(`V${r}`).value = entry.collectedDueBillAmount || "";
 
-      for (const col of ["R", "S", "T"]) {
+      for (const col of ["S", "T", "U"]) {
         const cell = ws.getCell(`${col}${r}`);
         cell.border = allBorders("D97706");
         cell.font = { name: "Segoe UI", size: 9 };
         cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
       }
+      // AMOUNT column (V) — right-aligned number
+      ws.getCell(`V${r}`).border = allBorders("D97706");
+      ws.getCell(`V${r}`).font = { name: "Segoe UI", size: 9 };
+      ws.getCell(`V${r}`).alignment = { vertical: "middle", horizontal: "right", wrapText: true };
     });
 
     // ── GRAND TOTAL row ──────────────────────────────────────────────
@@ -410,10 +422,12 @@ export async function GET(request: Request) {
     ws.getColumn("N").width = 14;  // Created Bill No
     ws.getColumn("O").width = 20;  // Created Name
     ws.getColumn("P").width = 14;  // Created Mobile
-    ws.getColumn("Q").width = 3;   // spacer
-    ws.getColumn("R").width = 14;  // Collected Bill No
-    ws.getColumn("S").width = 20;  // Collected Name
-    ws.getColumn("T").width = 14;  // Collected Mobile
+    ws.getColumn("Q").width = 13;  // Created Amount  ← NEW
+    ws.getColumn("R").width = 3;   // spacer  (shifted from Q)
+    ws.getColumn("S").width = 14;  // Collected Bill No  (shifted from R)
+    ws.getColumn("T").width = 20;  // Collected Name  (shifted from S)
+    ws.getColumn("U").width = 14;  // Collected Mobile  (shifted from T)
+    ws.getColumn("V").width = 13;  // Collected Amount  ← NEW
 
     // ── Build buffer and respond ──────────────────────────────────────
     const buffer = await workbook.xlsx.writeBuffer();

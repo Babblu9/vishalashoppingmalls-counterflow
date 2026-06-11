@@ -279,7 +279,7 @@ export async function POST(request: Request) {
         // Multi-entry arrays (preferred); fall back to legacy single fields
         const dueBills: { billNo: string; name: string; amount: number; mobile: string }[] =
           Array.isArray(entry.dueBills) ? entry.dueBills : [];
-        const collectedDueBills: { billNo: string; name: string; mobile: string }[] =
+        const collectedDueBills: { billNo: string; name: string; mobile: string; amount: number }[] =
           Array.isArray(entry.collectedDueBills) ? entry.collectedDueBills : [];
 
         // Legacy single fields — populated from first array element for backward compat
