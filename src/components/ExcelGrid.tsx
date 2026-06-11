@@ -49,6 +49,7 @@ export interface ReportEntryData {
   // Multi-entry arrays (preferred over legacy fields)
   dueBills?: DueBillItem[];
   collectedDueBills?: CollectedDueBillItem[];
+  manuallyCollected?: number;
   manualTotal: number;
   systemTotal?: number;
   difference?: number;
@@ -79,6 +80,7 @@ const COLUMNS: ColumnConfig[] = [
   { header: "DUE", subHeader: "Created", key: "totalDue", type: "number", editable: true },
   { header: "DUE", subHeader: "Collected", key: "collectedDue", type: "number", editable: true },
   { header: "COUNTER FLOW", key: "counterFlow", type: "number", editable: true },
+  { header: "MANUALLY", subHeader: "Collected", key: "manuallyCollected", type: "number", editable: true },
   { header: "C.T", subHeader: "Sum", key: "systemTotal", type: "computed", editable: false },
   { header: "+/-", key: "manualTotal", type: "number", editable: true },
 ];
@@ -114,14 +116,15 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
   const [editingValue, setEditingValue] = useState<string>("");
   const editingValueRef = useRef<string>("");
 
-  // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED goes into system total)
+  // G TOTAL = cash + gpay + card + counterFlow + totalDue + manuallyCollected
   const processedData = data.map((row) => {
     const systemTotal =
       (row.cash || 0) +
       (row.gpay || 0) +
       (row.card || 0) +
       (row.counterFlow || 0) +
-      (row.totalDue || 0);
+      (row.totalDue || 0) +
+      (row.manuallyCollected || 0);
     return { ...row, systemTotal };
   });
 
@@ -133,12 +136,13 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
       acc.counterFlow += row.counterFlow || 0;
       acc.totalDue += row.totalDue || 0;
       acc.collectedDue += row.collectedDue || 0;
+      acc.manuallyCollected += row.manuallyCollected || 0;
       acc.systemTotal += row.systemTotal || 0;
       acc.manualTotal += row.manualTotal || 0;
       acc.dueBillAmount += row.dueBillAmount || 0;
       return acc;
     },
-    { cash: 0, gpay: 0, card: 0, counterFlow: 0, totalDue: 0, collectedDue: 0, systemTotal: 0, manualTotal: 0, dueBillAmount: 0 }
+    { cash: 0, gpay: 0, card: 0, counterFlow: 0, totalDue: 0, collectedDue: 0, manuallyCollected: 0, systemTotal: 0, manualTotal: 0, dueBillAmount: 0 }
   );
 
   const toggleRow = (rowIndex: number) => {
@@ -672,7 +676,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                 <td className="py-3 px-3 text-xs font-extrabold uppercase tracking-wider text-[#C9A227] sticky left-9 z-10 border-r border-[#C9A227]/20 bg-[#8B1A1A]">
                   G.T
                 </td>
-                {[totals.cash, totals.gpay, totals.card, totals.totalDue, totals.collectedDue, totals.counterFlow].map((v, i) => (
+                {[totals.cash, totals.gpay, totals.card, totals.totalDue, totals.collectedDue, totals.counterFlow, totals.manuallyCollected].map((v, i) => (
                   <td key={i} className="py-3 px-3 text-right text-xs text-white border-r border-[#C9A227]/20">{fmt(v)}</td>
                 ))}
                 <td className="py-3 px-3 text-right text-xs font-extrabold border-r border-[#C9A227]/20 text-[#C9A227]">
@@ -719,10 +723,16 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                 { label: "CARD", value: totals.card },
                 { label: "COUNTER FLOW", value: totals.counterFlow },
                 { label: "DUE CREATED", value: totals.totalDue, teal: true },
+                { label: "DUE COLLECTED", value: totals.collectedDue, gold: true },
+                { label: "MANUALLY COLLECTED", value: totals.manuallyCollected },
               ].map((item, i) => (
                 <tr key={i} className="border-b border-[#E8D5B0] hover:bg-[#FDF6EE]">
                   <td className="px-5 py-2.5 text-xs font-semibold text-[#5C4A3A]">{item.label}</td>
-                  <td className={`px-5 py-2.5 text-right text-xs font-bold ${(item as any).teal ? "text-[#1B8A7A]" : "text-[#1A0A0A]"}`}>
+                  <td className={`px-5 py-2.5 text-right text-xs font-bold ${
+                    (item as any).teal ? "text-[#1B8A7A]" :
+                    (item as any).gold ? "text-[#92400E]" :
+                    "text-[#1A0A0A]"
+                  }`}>
                     {fmt(item.value)}
                   </td>
                 </tr>

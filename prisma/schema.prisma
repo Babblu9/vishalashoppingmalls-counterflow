@@ -88,9 +88,12 @@ model ReportEntry {
   dueBillsJson           Json    @default("[]")
   collectedDueBillsJson  Json    @default("[]")
   
+  // Additional payment mode — manually collected by staff
+  manuallyCollected Float  @default(0)
+
   // Computed values stored for fast indexing / snapshot auditing
   manualTotal  Float       @default(0)
-  systemTotal  Float       @default(0) // cash + gpay + card + counterFlow + totalDue
+  systemTotal  Float       @default(0) // cash + gpay + card + counterFlow + totalDue + manuallyCollected
   difference   Float       @default(0) // manualTotal - systemTotal
   grandTotal   Float       @default(0) // systemTotal
   

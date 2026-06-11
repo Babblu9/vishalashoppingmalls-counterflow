@@ -79,6 +79,7 @@ export async function GET(request: Request) {
         collectedDueBillMobile: null,
         dueBills: [],
         collectedDueBills: [],
+        manuallyCollected: 0,
         manualTotal: 0,
         systemTotal: 0,
         difference: 0,
@@ -109,7 +110,8 @@ export async function GET(request: Request) {
         entry.gpay +
         entry.card +
         entry.counterFlow +
-        entry.totalDue;
+        entry.totalDue +
+        entry.manuallyCollected;
       const difference = entry.manualTotal; // user-entered +/- value
 
       // Build dueBills array: prefer dueBillsJson, fallback to legacy single fields
@@ -149,6 +151,7 @@ export async function GET(request: Request) {
         collectedDueBillMobile: entry.collectedDueBillMobile,
         dueBills,
         collectedDueBills,
+        manuallyCollected: entry.manuallyCollected,
         manualTotal: entry.manualTotal,
         systemTotal,
         difference,
@@ -274,6 +277,7 @@ export async function POST(request: Request) {
         const counterFlow = Number(entry.counterFlow) || 0;
         const totalDue = Number(entry.totalDue) || 0;
         const collectedDue = Number(entry.collectedDue) || 0;
+        const manuallyCollected = Number(entry.manuallyCollected) || 0;
         const manualTotal = Number(entry.manualTotal) || 0;
 
         // Multi-entry arrays (preferred); fall back to legacy single fields
@@ -291,8 +295,8 @@ export async function POST(request: Request) {
         const collectedDueBillName = collectedDueBills[0]?.name || entry.collectedDueBillName || null;
         const collectedDueBillMobile = collectedDueBills[0]?.mobile || entry.collectedDueBillMobile || null;
 
-        // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED)
-        const systemTotal = cash + gpay + card + counterFlow + totalDue;
+        // G TOTAL = cash + gpay + card + counterFlow + totalDue + manuallyCollected
+        const systemTotal = cash + gpay + card + counterFlow + totalDue + manuallyCollected;
         const difference = manualTotal; // user-entered +/- discrepancy stored directly
         const grandTotal = systemTotal;
 
@@ -326,6 +330,7 @@ export async function POST(request: Request) {
             collectedDueBillMobile,
             dueBillsJson: dueBills,
             collectedDueBillsJson: collectedDueBills,
+            manuallyCollected,
             manualTotal,
             systemTotal,
             difference,
@@ -347,6 +352,7 @@ export async function POST(request: Request) {
             collectedDueBillMobile,
             dueBillsJson: dueBills,
             collectedDueBillsJson: collectedDueBills,
+            manuallyCollected,
             manualTotal,
             systemTotal,
             difference,
@@ -364,6 +370,7 @@ export async function POST(request: Request) {
             "counterFlow",
             "totalDue",
             "collectedDue",
+            "manuallyCollected",
             "dueBillAmount",
             "dueBillMobile",
             "collectedDueBillNo",

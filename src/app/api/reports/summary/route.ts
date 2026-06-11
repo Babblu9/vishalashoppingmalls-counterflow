@@ -56,6 +56,7 @@ export async function GET(request: Request) {
         totalDue = 0,
         collectedDue = 0,
         dueBillAmount = 0,
+        manuallyCollected = 0,
         manualTotal = 0,
         systemTotal = 0,
         difference = 0;
@@ -69,6 +70,7 @@ export async function GET(request: Request) {
           totalDue += entry.totalDue;
           collectedDue += entry.collectedDue;
           dueBillAmount += entry.dueBillAmount;
+          manuallyCollected += entry.manuallyCollected;
           manualTotal += entry.manualTotal;
           systemTotal += entry.systemTotal;
           difference += Math.abs(entry.difference);
@@ -93,6 +95,7 @@ export async function GET(request: Request) {
           totalDue,
           collectedDue,
           dueBillAmount,
+          manuallyCollected,
           manualTotal,
           systemTotal,
           difference,
