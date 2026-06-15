@@ -751,14 +751,14 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
             <div className="px-4 py-1.5 bg-[#E6F7F4] text-[10px] font-bold text-[#1B8A7A] uppercase tracking-widest">
               Due Created
             </div>
-            <div className="overflow-y-auto max-h-[180px]">
+            <div className="overflow-y-auto max-h-[320px]">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-[#FDF6EE] border-b border-[#E8D5B0]">
                   <tr>
-                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Counter</th>
-                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Bill No</th>
-                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Name</th>
-                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Mobile</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase border-r border-[#E8D5B0]">Counter</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase border-r border-[#E8D5B0]">Bill No</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase border-r border-[#E8D5B0]">Name</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase border-r border-[#E8D5B0]">Mobile</th>
                     <th className="px-3 py-1.5 text-right text-[9px] font-bold text-[#9A7E6A] uppercase">Amount</th>
                   </tr>
                 </thead>
@@ -785,10 +785,10 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                     }
                     return rows.map((r, i) => (
                       <tr key={i} className="hover:bg-[#FDF6EE]">
-                        <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A]">{r.counterName}</td>
-                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.billNo || "—"}</td>
-                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.name || "—"}</td>
-                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A]">{r.mobile || "—"}</td>
+                        <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A] border-r border-[#E8D5B0]">{r.counterName}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A] border-r border-[#E8D5B0]">{r.billNo || "—"}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A] border-r border-[#E8D5B0]">{r.name || "—"}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A] border-r border-[#E8D5B0]">{r.mobile || "—"}</td>
                         <td className="px-3 py-1.5 text-right text-xs font-bold text-[#1B8A7A]">{fmt(r.amount || 0)}</td>
                       </tr>
                     ));
@@ -815,10 +815,10 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-[#FDF6EE] border-b border-[#E8D5B0]">
                   <tr>
-                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase w-20">Counter</th>
-                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Bill No</th>
-                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Name</th>
-                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase">Mobile</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase w-20 border-r border-[#E8D5B0]">Counter</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase border-r border-[#E8D5B0]">Bill No</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase border-r border-[#E8D5B0]">Name</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase border-r border-[#E8D5B0]">Mobile</th>
                     <th className="px-3 py-1.5 text-right text-[9px] font-bold text-[#9A7E6A] uppercase">Amount</th>
                     {!isReadOnly && <th className="px-1 py-1.5 w-12"></th>}
                   </tr>
@@ -831,8 +831,8 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                       if (bills.length === 0) {
                         return [(
                           <tr key={`${r.counterId}-empty`} className="hover:bg-[#FDF6EE]">
-                            <td className="px-3 py-2 text-xs font-bold text-[#8B1A1A]">{r.counterName}</td>
-                            <td colSpan={3} className="px-3 py-2">
+                            <td className="px-3 py-2 text-xs font-bold text-[#8B1A1A] border-r border-[#E8D5B0]">{r.counterName}</td>
+                            <td colSpan={3} className="px-3 py-2 border-r border-[#E8D5B0]">
                               {!isReadOnly ? (
                                 <button
                                   onClick={() => handleAddManuallyCollectedBill(rIdx)}
@@ -854,10 +854,10 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                         const isLastBill = bIdx === bills.length - 1;
                         return (
                           <tr key={`${r.counterId}-${bIdx}`} className="hover:bg-[#FDF6EE]">
-                            <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A] align-top">
+                            <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A] align-top border-r border-[#E8D5B0]">
                               {bIdx === 0 ? r.counterName : ""}
                             </td>
-                            <td className="px-2 py-1">
+                            <td className="px-2 py-1 border-r border-[#E8D5B0]">
                               {!isReadOnly ? (
                                 <input
                                   type="text"
@@ -870,7 +870,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                                 <span className="text-xs text-[#5C4A3A]">{bill.billNo || "—"}</span>
                               )}
                             </td>
-                            <td className="px-2 py-1">
+                            <td className="px-2 py-1 border-r border-[#E8D5B0]">
                               {!isReadOnly ? (
                                 <input
                                   type="text"
@@ -883,7 +883,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                                 <span className="text-xs text-[#5C4A3A]">{bill.name || "—"}</span>
                               )}
                             </td>
-                            <td className="px-2 py-1">
+                            <td className="px-2 py-1 border-r border-[#E8D5B0]">
                               {!isReadOnly ? (
                                 <input
                                   type="tel"
