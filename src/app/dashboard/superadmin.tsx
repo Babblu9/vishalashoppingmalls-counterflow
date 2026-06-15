@@ -341,8 +341,8 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
           {/* Nav */}
           <nav className="space-y-1">
             {[
-              { id: "overview", label: "Overview", icon: Building },
               { id: "liveview", label: "Live Branch View", icon: LayoutGrid },
+              { id: "overview", label: "Overview", icon: Building },
               { id: "logs", label: "System Audit Logs", icon: Activity },
               { id: "admins", label: "Admin Credentials", icon: ShieldCheck },
               { id: "backup", label: "History & Backup", icon: ArchiveRestore },
