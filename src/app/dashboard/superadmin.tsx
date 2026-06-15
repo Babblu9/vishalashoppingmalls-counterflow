@@ -423,65 +423,110 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
 
           {activeTab === "overview" && (
             <>
-              {/* Branch Submissions Tracker */}
+              {/* Branch Financial Overview Table */}
               <div className="bg-white border border-[#E8D5B0] rounded-xl shadow-sm overflow-hidden">
-                <div className="px-6 py-4 bg-[#8B1A1A] flex items-center gap-2">
-                  <Building size={15} className="text-[#C9A227]" />
-                  <h3 className="text-sm font-bold text-white">Branch Submissions Tracker</h3>
+                <div className="px-6 py-4 bg-[#8B1A1A] flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Building size={15} className="text-[#C9A227]" />
+                    <h3 className="text-sm font-bold text-white">Branch Overview — {selectedDate}</h3>
+                  </div>
+                  <span className="text-[10px] text-white/50 font-semibold">
+                    {summary?.metrics.totalSubmittedBranches ?? 0} / {summary?.metrics.totalBranches ?? 0} branches submitted
+                  </span>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
+                  <table className="w-full border-collapse text-xs min-w-[900px]">
                     <thead>
-                      <tr className="border-b border-[#E8D5B0] bg-[#FDF6EE] text-[#9A7E6A] text-xs font-bold uppercase tracking-wider">
-                        <th className="py-3 px-5">Branch</th>
-                        <th className="py-3 px-5">Counters</th>
-                        <th className="py-3 px-5">Submission Status</th>
-                        <th className="py-3 px-5">Submitted By</th>
-                        <th className="py-3 px-5">Net Collection</th>
-                        <th className="py-3 px-5">Discrepancy</th>
+                      <tr className="bg-[#6B1212] text-[#C9A227] font-bold uppercase tracking-wider">
+                        <th className="py-3 px-4 text-left sticky left-0 bg-[#6B1212] z-10 border-r border-[#C9A227]/20">Branch</th>
+                        <th className="py-3 px-3 text-left border-r border-[#C9A227]/20">By</th>
+                        <th className="py-3 px-3 text-center border-r border-[#C9A227]/20">Status</th>
+                        <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">Cash</th>
+                        <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">G.Pay</th>
+                        <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">Card</th>
+                        <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">C.F</th>
+                        <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">Due</th>
+                        <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">M.C</th>
+                        <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">C.T Sum</th>
+                        <th className="py-3 px-3 text-right">+/-</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E8D5B0]">
-                      {summary?.branchSummaries.map((branch) => (
-                        <tr key={branch.branchId} className="hover:bg-[#FDF6EE] transition-colors">
-                          <td className="py-4 px-5 font-bold text-[#8B1A1A]">{branch.branchName}</td>
-                          <td className="py-4 px-5 text-[#5C4A3A] text-xs">
-                            {branch.filledCounters} / {branch.totalCounters} filled
-                          </td>
-                          <td className="py-4 px-5">
-                            {branch.status === "SUBMITTED" ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#1B8A7A]/10 text-[#1B8A7A] border border-[#1B8A7A]/30">
-                                <CheckCircle size={11} /> Submitted
-                              </span>
-                            ) : branch.status === "DRAFT" ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                <Clock size={11} /> In Draft
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#FDF6EE] text-[#9A7E6A] border border-[#E8D5B0]">
-                                Not Started
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-4 px-5 text-[#5C4A3A] text-xs">
-                            {branch.submittedBy || "—"}
-                            {branch.submittedAt && (
-                              <span className="block text-[#9A7E6A] text-[10px]">
-                                {new Date(branch.submittedAt).toLocaleTimeString("en-IN")}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-4 px-5 font-bold text-[#1A0A0A] text-xs">
-                            {formatCurrency(branch.totals.systemTotal)}
-                          </td>
-                          <td className={`py-4 px-5 font-extrabold text-xs ${
-                            branch.totals.difference !== 0 ? "text-red-600" : "text-[#1B8A7A]"
-                          }`}>
-                            {formatCurrency(branch.totals.difference)}
-                          </td>
-                        </tr>
-                      ))}
+                      {summary?.branchSummaries.map((branch: any) => {
+                        const hasDiff = (branch.totals.manualTotal || 0) !== 0;
+                        return (
+                          <tr key={branch.branchId} className={`transition-colors ${hasDiff ? "bg-red-50 hover:bg-red-100/60" : "hover:bg-[#FDF6EE]"}`}>
+                            <td className="py-3 px-4 sticky left-0 bg-inherit z-10 border-r border-[#E8D5B0]">
+                              <span className="font-bold text-[#8B1A1A]">{branch.branchName}</span>
+                              <span className="block text-[10px] text-[#9A7E6A] mt-0.5">{branch.filledCounters}/{branch.totalCounters} counters</span>
+                            </td>
+                            <td className="py-3 px-3 border-r border-[#E8D5B0]">
+                              <span className="font-semibold text-[#5C4A3A]">{branch.submittedBy || "—"}</span>
+                              {branch.submittedAt && (
+                                <span className="block text-[10px] text-[#9A7E6A]">
+                                  {new Date(branch.submittedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-center border-r border-[#E8D5B0]">
+                              {branch.status === "SUBMITTED" ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#1B8A7A]/10 text-[#1B8A7A] border border-[#1B8A7A]/30">
+                                  <CheckCircle size={9} /> Done
+                                </span>
+                              ) : branch.status === "DRAFT" ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                  <Clock size={9} /> Draft
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FDF6EE] text-[#9A7E6A] border border-[#E8D5B0]">
+                                  —
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right font-semibold text-[#1A0A0A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.cash)}</td>
+                            <td className="py-3 px-3 text-right font-semibold text-[#1A0A0A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.gpay)}</td>
+                            <td className="py-3 px-3 text-right font-semibold text-[#1A0A0A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.card)}</td>
+                            <td className="py-3 px-3 text-right font-semibold text-[#1A0A0A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.counterFlow)}</td>
+                            <td className="py-3 px-3 text-right font-semibold text-[#1B8A7A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.totalDue)}</td>
+                            <td className="py-3 px-3 text-right font-semibold text-[#5C4A3A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.manuallyCollected || 0)}</td>
+                            <td className="py-3 px-3 text-right font-extrabold text-[#8B1A1A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.systemTotal)}</td>
+                            <td className={`py-3 px-3 text-right font-extrabold ${hasDiff ? "text-red-600" : "text-[#1B8A7A]"}`}>
+                              {formatCurrency(branch.totals.manualTotal || 0)}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
+                    {/* Grand Total row */}
+                    {summary && summary.branchSummaries.length > 0 && (() => {
+                      const gt = summary.branchSummaries.reduce((acc: any, b: any) => ({
+                        cash:              acc.cash              + b.totals.cash,
+                        gpay:              acc.gpay              + b.totals.gpay,
+                        card:              acc.card              + b.totals.card,
+                        counterFlow:       acc.counterFlow       + b.totals.counterFlow,
+                        totalDue:          acc.totalDue          + b.totals.totalDue,
+                        manuallyCollected: acc.manuallyCollected + (b.totals.manuallyCollected || 0),
+                        systemTotal:       acc.systemTotal       + b.totals.systemTotal,
+                        manualTotal:       acc.manualTotal       + (b.totals.manualTotal || 0),
+                      }), { cash: 0, gpay: 0, card: 0, counterFlow: 0, totalDue: 0, manuallyCollected: 0, systemTotal: 0, manualTotal: 0 });
+                      return (
+                        <tfoot>
+                          <tr className="bg-[#8B1A1A] font-extrabold text-white border-t-2 border-[#C9A227]/40">
+                            <td className="py-3 px-4 sticky left-0 bg-[#8B1A1A] z-10 border-r border-[#C9A227]/20 text-[#C9A227] uppercase tracking-wider">Total</td>
+                            <td className="py-3 px-3 border-r border-[#C9A227]/20"></td>
+                            <td className="py-3 px-3 border-r border-[#C9A227]/20"></td>
+                            <td className="py-3 px-3 text-right border-r border-[#C9A227]/20">{formatCurrency(gt.cash)}</td>
+                            <td className="py-3 px-3 text-right border-r border-[#C9A227]/20">{formatCurrency(gt.gpay)}</td>
+                            <td className="py-3 px-3 text-right border-r border-[#C9A227]/20">{formatCurrency(gt.card)}</td>
+                            <td className="py-3 px-3 text-right border-r border-[#C9A227]/20">{formatCurrency(gt.counterFlow)}</td>
+                            <td className="py-3 px-3 text-right border-r border-[#C9A227]/20">{formatCurrency(gt.totalDue)}</td>
+                            <td className="py-3 px-3 text-right border-r border-[#C9A227]/20">{formatCurrency(gt.manuallyCollected)}</td>
+                            <td className="py-3 px-3 text-right border-r border-[#C9A227]/20 text-[#C9A227]">{formatCurrency(gt.systemTotal)}</td>
+                            <td className={`py-3 px-3 text-right ${gt.manualTotal !== 0 ? "text-red-300" : "text-[#C9A227]"}`}>{formatCurrency(gt.manualTotal)}</td>
+                          </tr>
+                        </tfoot>
+                      );
+                    })()}
                   </table>
                 </div>
               </div>
