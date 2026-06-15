@@ -80,6 +80,7 @@ export async function GET(request: Request) {
         dueBills: [],
         collectedDueBills: [],
         manuallyCollected: 0,
+        manuallyCollectedBills: [],
         manualTotal: 0,
         systemTotal: 0,
         difference: 0,
@@ -132,6 +133,11 @@ export async function GET(request: Request) {
             ? [{ billNo: entry.collectedDueBillNo || "", name: entry.collectedDueBillName || "", mobile: entry.collectedDueBillMobile || "" }]
             : [];
 
+      // Build manuallyCollectedBills array from manuallyCollectedBillsJson
+      const rawManuallyCollected = entry.manuallyCollectedBillsJson as any[];
+      const manuallyCollectedBills: { billNo: string; name: string; mobile: string; amount: number }[] =
+        Array.isArray(rawManuallyCollected) ? rawManuallyCollected : [];
+
       return {
         id: entry.id,
         counterId: entry.counterId,
@@ -152,6 +158,7 @@ export async function GET(request: Request) {
         dueBills,
         collectedDueBills,
         manuallyCollected: entry.manuallyCollected,
+        manuallyCollectedBills,
         manualTotal: entry.manualTotal,
         systemTotal,
         difference,
@@ -285,6 +292,8 @@ export async function POST(request: Request) {
           Array.isArray(entry.dueBills) ? entry.dueBills : [];
         const collectedDueBills: { billNo: string; name: string; mobile: string; amount: number }[] =
           Array.isArray(entry.collectedDueBills) ? entry.collectedDueBills : [];
+        const manuallyCollectedBills: { billNo: string; name: string; mobile: string; amount: number }[] =
+          Array.isArray(entry.manuallyCollectedBills) ? entry.manuallyCollectedBills : [];
 
         // Legacy single fields — populated from first array element for backward compat
         const dueBillNo = dueBills[0]?.billNo || entry.dueBillNo || null;
@@ -331,6 +340,7 @@ export async function POST(request: Request) {
             dueBillsJson: dueBills,
             collectedDueBillsJson: collectedDueBills,
             manuallyCollected,
+            manuallyCollectedBillsJson: manuallyCollectedBills,
             manualTotal,
             systemTotal,
             difference,
@@ -353,6 +363,7 @@ export async function POST(request: Request) {
             dueBillsJson: dueBills,
             collectedDueBillsJson: collectedDueBills,
             manuallyCollected,
+            manuallyCollectedBillsJson: manuallyCollectedBills,
             manualTotal,
             systemTotal,
             difference,

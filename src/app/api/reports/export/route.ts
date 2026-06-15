@@ -67,8 +67,8 @@ export async function GET(request: Request) {
         // Build multiline strings from JSON arrays (fallback to legacy single fields)
         const rawDue = entry.dueBillsJson as any[];
         const dueBills = Array.isArray(rawDue) && rawDue.length > 0 ? rawDue : null;
-        const rawCol = entry.collectedDueBillsJson as any[];
-        const colBills = Array.isArray(rawCol) && rawCol.length > 0 ? rawCol : null;
+        const rawMC = (entry as any).manuallyCollectedBillsJson as any[];
+        const mcBills = Array.isArray(rawMC) && rawMC.length > 0 ? rawMC : null;
 
           return {
             counterName: entry.counter.name,
@@ -76,7 +76,6 @@ export async function GET(request: Request) {
             gpay: entry.gpay,
             card: entry.card,
             totalDue: entry.totalDue,
-            collectedDue: entry.collectedDue,
             counterFlow: entry.counterFlow,
             manuallyCollected: (entry as any).manuallyCollected ?? 0,
           // Due Created details — join multiple bills with newline
@@ -84,11 +83,11 @@ export async function GET(request: Request) {
           dueBillName:   dueBills ? dueBills.map((b: any) => b.name    || "").join("\n") : (entry.dueBillName || ""),
           dueBillMobile: dueBills ? dueBills.map((b: any) => b.mobile  || "").join("\n") : (entry.dueBillMobile || ""),
           dueBillAmount: dueBills ? dueBills.map((b: any) => b.amount  || 0).join("\n")  : (entry.dueBillAmount || 0),
-          // Due Collected details
-          collectedDueBillNo:     colBills ? colBills.map((b: any) => b.billNo || "").join("\n") : (entry.collectedDueBillNo   || ""),
-          collectedDueBillName:   colBills ? colBills.map((b: any) => b.name   || "").join("\n") : (entry.collectedDueBillName || ""),
-          collectedDueBillMobile: colBills ? colBills.map((b: any) => b.mobile || "").join("\n") : (entry.collectedDueBillMobile || ""),
-          collectedDueBillAmount: colBills ? colBills.map((b: any) => b.amount || 0).join("\n")  : "",
+          // Manually Collected details
+          mcBillNo:     mcBills ? mcBills.map((b: any) => b.billNo || "").join("\n") : "",
+          mcBillName:   mcBills ? mcBills.map((b: any) => b.name   || "").join("\n") : "",
+          mcBillMobile: mcBills ? mcBills.map((b: any) => b.mobile || "").join("\n") : "",
+          mcBillAmount: mcBills ? mcBills.map((b: any) => b.amount || 0).join("\n")  : "",
           systemTotal,
           manualTotal: entry.manualTotal,
         };
@@ -103,9 +102,9 @@ export async function GET(request: Request) {
         .map((counter) => ({
         counterName: counter.name,
         cash: 0, gpay: 0, card: 0,
-        totalDue: 0, collectedDue: 0, counterFlow: 0, manuallyCollected: 0,
-        dueBillNo: "", dueBillName: "", dueBillMobile: "",
-        collectedDueBillNo: "", collectedDueBillName: "", collectedDueBillMobile: "",
+        totalDue: 0, counterFlow: 0, manuallyCollected: 0,
+        dueBillNo: "", dueBillName: "", dueBillMobile: "", dueBillAmount: 0,
+        mcBillNo: "", mcBillName: "", mcBillMobile: "", mcBillAmount: "",
         systemTotal: 0, manualTotal: 0,
       }));
     }
@@ -167,18 +166,17 @@ export async function GET(request: Request) {
     ws.getCell("K3").value = new Date().toLocaleString("en-IN"); Object.assign(ws.getCell("K3"), metaValStyle);
 
     // ── ROW 5: Left table column headers (A–I) ───────────────────────
-    // A: C.N | B: CASH | C: G.PAY | D: CARD | E: DUE CREATED | F: DUE COLLECTED | G: COUNTER FLOW | H: MANUALLY TAKEN | I: C.T Sum | J: +/-
+    // Target layout: A=C.N | B=CASH | C=G.PAY | D=CARD | E=DUE Created | F=COUNTER FLOW | G=MANUALLY TAKEN | H=C.T Sum | I=+/-
     const leftHeaders = [
       { col: "A", label: "C.N" },
       { col: "B", label: "CASH" },
       { col: "C", label: "G.PAY" },
       { col: "D", label: "CARD" },
       { col: "E", label: "DUE\nCreated" },
-      { col: "F", label: "DUE\nCollected" },
-      { col: "G", label: "COUNTER FLOW" },
-      { col: "H", label: "MANUALLY\nTaken" },
-      { col: "I", label: "C.T\nSum" },
-      { col: "J", label: "+/-" },
+      { col: "F", label: "COUNTER FLOW" },
+      { col: "G", label: "MANUALLY\nTaken" },
+      { col: "H", label: "C.T\nSum" },
+      { col: "I", label: "+/-" },
     ];
 
     ws.getRow(5).height = 30;
@@ -210,14 +208,14 @@ export async function GET(request: Request) {
     dcHeader.alignment = { vertical: "middle", horizontal: "center" };
     dcHeader.border = allBorders("334155");
 
-    // Col S–V: DUE COLLECTED DETAILS block (BILL NO, NAME, MOBILE, AMOUNT)
+    // Col S–V: MANUALLY COLLECTED DETAILS block (BILL NO, NAME, MOBILE, AMOUNT)
     ws.mergeCells("S5:V5");
-    const dlHeader = ws.getCell("S5");
-    dlHeader.value = "DUE COLLECTED DETAILS";
-    dlHeader.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
-    dlHeader.fill = headerFill("92400E");
-    dlHeader.alignment = { vertical: "middle", horizontal: "center" };
-    dlHeader.border = allBorders("334155");
+    const mcHeader = ws.getCell("S5");
+    mcHeader.value = "MANUALLY COLLECTED DETAILS";
+    mcHeader.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
+    mcHeader.fill = headerFill("4338CA");
+    mcHeader.alignment = { vertical: "middle", horizontal: "center" };
+    mcHeader.border = allBorders("334155");
 
     // Sub-headers row 6
     ws.getRow(6).height = 18;
@@ -230,14 +228,14 @@ export async function GET(request: Request) {
       cell.alignment = { vertical: "middle", horizontal: "center" };
       cell.border = allBorders("1B8A7A");
     });
-    // Due Collected sub-headers (S6, T6, U6, V6)
+    // Manually Collected sub-headers (S6, T6, U6, V6)
     ["S6", "T6", "U6", "V6"].forEach((addr, i) => {
       const cell = ws.getCell(addr);
       cell.value = ["BILL NO", "NAME", "MOBILE", "AMOUNT"][i];
       cell.font = { name: "Segoe UI", size: 8, bold: true, color: { argb: "1F2937" } };
-      cell.fill = headerFill("FEF3C7");
+      cell.fill = headerFill("E0E7FF");
       cell.alignment = { vertical: "middle", horizontal: "center" };
-      cell.border = allBorders("D97706");
+      cell.border = allBorders("4338CA");
     });
 
     // ── DATA ROWS start at row 7 ─────────────────────────────────────
@@ -249,26 +247,24 @@ export async function GET(request: Request) {
 
       const hasDiff = (entry.manualTotal || 0) !== 0;
 
-      // Left table data
+      // Left table data — A=C.N, B=CASH, C=GPAY, D=CARD, E=DUE Created, F=COUNTER FLOW, G=MANUALLY TAKEN
       ws.getCell(`A${r}`).value = entry.counterName;
       ws.getCell(`B${r}`).value = entry.cash;
       ws.getCell(`C${r}`).value = entry.gpay;
       ws.getCell(`D${r}`).value = entry.card;
       ws.getCell(`E${r}`).value = entry.totalDue;
-      ws.getCell(`F${r}`).value = entry.collectedDue;
-      ws.getCell(`G${r}`).value = entry.counterFlow;
-      ws.getCell(`H${r}`).value = entry.manuallyCollected;
-      // I: C.T Sum = computed sum (B+C+D+E+G+H)
-      ws.getCell(`I${r}`).value = {
-        formula: `B${r}+C${r}+D${r}+E${r}+G${r}+H${r}`,
+      ws.getCell(`F${r}`).value = entry.counterFlow;
+      ws.getCell(`G${r}`).value = entry.manuallyCollected;
+      // H: C.T Sum = B+C+D+E+F+G
+      ws.getCell(`H${r}`).value = {
+        formula: `B${r}+C${r}+D${r}+E${r}+F${r}+G${r}`,
         result: entry.systemTotal,
       };
+      // I: +/- = user-entered discrepancy (manualTotal)
+      ws.getCell(`I${r}`).value = entry.manualTotal;
 
-      // J: +/- = user-entered discrepancy (manualTotal)
-      ws.getCell(`J${r}`).value = entry.manualTotal;
-
-      // Borders and formatting for left table cols A–J
-      for (const col of ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]) {
+      // Borders and formatting for left table cols A–I
+      for (const col of ["A", "B", "C", "D", "E", "F", "G", "H", "I"]) {
         const cell = ws.getCell(`${col}${r}`);
         cell.border = allBorders();
         cell.font = { name: "Segoe UI", size: 9 };
@@ -278,7 +274,7 @@ export async function GET(request: Request) {
           cell.alignment = { vertical: "middle", horizontal: "right" };
           cell.numFmt = rupee;
         }
-        if (col === "J" && hasDiff) {
+        if (col === "I" && hasDiff) {
           cell.fill = headerFill("FEE2E2");
           cell.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "EF4444" } };
         }
@@ -301,20 +297,20 @@ export async function GET(request: Request) {
       ws.getCell(`Q${r}`).font = { name: "Segoe UI", size: 9 };
       ws.getCell(`Q${r}`).alignment = { vertical: "middle", horizontal: "right", wrapText: true };
 
-      // Due Collected detail columns S–V (BILL NO, NAME, MOBILE, AMOUNT)
-      ws.getCell(`S${r}`).value = entry.collectedDueBillNo || "";
-      ws.getCell(`T${r}`).value = entry.collectedDueBillName || "";
-      ws.getCell(`U${r}`).value = entry.collectedDueBillMobile || "";
-      ws.getCell(`V${r}`).value = entry.collectedDueBillAmount || "";
+      // Manually Collected detail columns S–V (BILL NO, NAME, MOBILE, AMOUNT)
+      ws.getCell(`S${r}`).value = entry.mcBillNo || "";
+      ws.getCell(`T${r}`).value = entry.mcBillName || "";
+      ws.getCell(`U${r}`).value = entry.mcBillMobile || "";
+      ws.getCell(`V${r}`).value = entry.mcBillAmount || "";
 
       for (const col of ["S", "T", "U"]) {
         const cell = ws.getCell(`${col}${r}`);
-        cell.border = allBorders("D97706");
+        cell.border = allBorders("4338CA");
         cell.font = { name: "Segoe UI", size: 9 };
         cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
       }
-      // AMOUNT column (V) — right-aligned number
-      ws.getCell(`V${r}`).border = allBorders("D97706");
+      // AMOUNT column (V) — right-aligned
+      ws.getCell(`V${r}`).border = allBorders("4338CA");
       ws.getCell(`V${r}`).font = { name: "Segoe UI", size: 9 };
       ws.getCell(`V${r}`).alignment = { vertical: "middle", horizontal: "right", wrapText: true };
     });
@@ -326,7 +322,7 @@ export async function GET(request: Request) {
     ws.getCell(`A${gtRow}`).font = { name: "Segoe UI", size: 9, bold: true };
     ws.getCell(`A${gtRow}`).alignment = { vertical: "middle", horizontal: "left" };
 
-    for (const col of ["B", "C", "D", "E", "F", "G", "H", "I", "J"]) {
+    for (const col of ["B", "C", "D", "E", "F", "G", "H", "I"]) {
       const cell = ws.getCell(`${col}${gtRow}`);
       cell.value = { formula: `SUM(${col}${dataStart}:${col}${gtRow - 1})` };
       cell.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "1E293B" } };
@@ -334,7 +330,7 @@ export async function GET(request: Request) {
       cell.numFmt = rupee;
     }
 
-    for (const col of ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]) {
+    for (const col of ["A", "B", "C", "D", "E", "F", "G", "H", "I"]) {
       const cell = ws.getCell(`${col}${gtRow}`);
       cell.fill = headerFill("F1F5F9");
       cell.border = {
@@ -347,14 +343,14 @@ export async function GET(request: Request) {
 
     // ── SYSTEM COUNTER block (col K:L, rows 7 onwards) ───────────────
     // G TOTAL = CASH + G.PAY + CARD + COUNTER FLOW + DUE CREATED + MANUALLY TAKEN
-    // Columns: B=CASH, C=GPAY, D=CARD, E=DUE Created, G=COUNTER FLOW, H=MANUALLY TAKEN
+    // Columns: B=CASH, C=GPAY, D=CARD, E=DUE Created, F=COUNTER FLOW, G=MANUALLY TAKEN
     const scLabels = [
       { label: "CASH",           formula: `SUM(B${dataStart}:B${gtRow - 1})` },
       { label: "G.PAY",          formula: `SUM(C${dataStart}:C${gtRow - 1})` },
       { label: "CARD",           formula: `SUM(D${dataStart}:D${gtRow - 1})` },
-      { label: "COUNTER FLOW",   formula: `SUM(G${dataStart}:G${gtRow - 1})` },
+      { label: "COUNTER FLOW",   formula: `SUM(F${dataStart}:F${gtRow - 1})` },
       { label: "DUE CREATED",    formula: `SUM(E${dataStart}:E${gtRow - 1})` },
-      { label: "MANUALLY TAKEN", formula: `SUM(H${dataStart}:H${gtRow - 1})` },
+      { label: "MANUALLY TAKEN", formula: `SUM(G${dataStart}:G${gtRow - 1})` },
     ];
 
     scLabels.forEach(({ label, formula }, i) => {
@@ -382,7 +378,6 @@ export async function GET(request: Request) {
     ws.getCell(`K${gtScRow}`).border = allBorders("1D4ED8");
     ws.getCell(`K${gtScRow}`).alignment = { vertical: "middle" };
 
-    // G TOTAL = sum of indices 0–5 (CASH, GPAY, CARD, COUNTER FLOW, DUE CREATED, MANUALLY TAKEN)
     ws.getCell(`L${gtScRow}`).value = {
       formula: `L${dataStart}+L${dataStart+1}+L${dataStart+2}+L${dataStart+3}+L${dataStart+4}+L${dataStart+5}`,
     };
@@ -401,7 +396,7 @@ export async function GET(request: Request) {
     ws.getCell(`K${diffScRow}`).alignment = { vertical: "middle" };
 
     ws.getCell(`L${diffScRow}`).value = {
-      formula: `SUM(J${dataStart}:J${gtRow - 1})`, // sum of all user-entered +/- values (col J)
+      formula: `SUM(I${dataStart}:I${gtRow - 1})`, // sum of all user-entered +/- values (col I)
     };
     ws.getCell(`L${diffScRow}`).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
     ws.getCell(`L${diffScRow}`).fill = headerFill("7F1D1D");
@@ -415,11 +410,10 @@ export async function GET(request: Request) {
     ws.getColumn("C").width = 13;  // G.PAY
     ws.getColumn("D").width = 13;  // CARD
     ws.getColumn("E").width = 13;  // DUE Created
-    ws.getColumn("F").width = 13;  // DUE Collected
-    ws.getColumn("G").width = 14;  // COUNTER FLOW
-    ws.getColumn("H").width = 14;  // MANUALLY TAKEN  ← NEW
-    ws.getColumn("I").width = 13;  // C.T Sum
-    ws.getColumn("J").width = 13;  // +/-
+    ws.getColumn("F").width = 14;  // COUNTER FLOW
+    ws.getColumn("G").width = 14;  // MANUALLY TAKEN
+    ws.getColumn("H").width = 13;  // C.T Sum
+    ws.getColumn("I").width = 13;  // +/-
     ws.getColumn("J").width = 3;   // spacer
     ws.getColumn("K").width = 18;  // SC labels
     ws.getColumn("L").width = 14;  // SC values
@@ -427,12 +421,12 @@ export async function GET(request: Request) {
     ws.getColumn("N").width = 14;  // Created Bill No
     ws.getColumn("O").width = 20;  // Created Name
     ws.getColumn("P").width = 14;  // Created Mobile
-    ws.getColumn("Q").width = 13;  // Created Amount  ← NEW
-    ws.getColumn("R").width = 3;   // spacer  (shifted from Q)
-    ws.getColumn("S").width = 14;  // Collected Bill No  (shifted from R)
-    ws.getColumn("T").width = 20;  // Collected Name  (shifted from S)
-    ws.getColumn("U").width = 14;  // Collected Mobile  (shifted from T)
-    ws.getColumn("V").width = 13;  // Collected Amount  ← NEW
+    ws.getColumn("Q").width = 13;  // Created Amount
+    ws.getColumn("R").width = 3;   // spacer
+    ws.getColumn("S").width = 14;  // MC Bill No
+    ws.getColumn("T").width = 20;  // MC Name
+    ws.getColumn("U").width = 14;  // MC Mobile
+    ws.getColumn("V").width = 13;  // MC Amount
 
     // ── Build buffer and respond ──────────────────────────────────────
     const buffer = await workbook.xlsx.writeBuffer();

@@ -85,8 +85,9 @@ model ReportEntry {
   collectedDueBillMobile String?
 
   // Multi-entry arrays (supersede the single-entry fields above)
-  dueBillsJson           Json    @default("[]")
-  collectedDueBillsJson  Json    @default("[]")
+  dueBillsJson              Json    @default("[]")
+  collectedDueBillsJson     Json    @default("[]")
+  manuallyCollectedBillsJson Json   @default("[]")
   
   // Additional payment mode — manually collected by staff
   manuallyCollected Float  @default(0)

@@ -628,7 +628,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                   { label: "COUNTER FLOW",  value: branch.totals.counterFlow,       style: "default" },
                   { label: "MANUALLY COLL.",value: branch.totals.manuallyCollected, style: "default" },
                   { label: "DUE CREATED",   value: branch.totals.totalDue,          style: "teal"    },
-                  { label: "DUE COLLECTED", value: branch.totals.collectedDue,      style: "gold"    },
                   { label: "C.T SUM",       value: branch.totals.systemTotal,       style: "primary" },
                   { label: "+/-",           value: branch.totals.manualTotal,       style: hasDiff ? "red" : "green" },
                 ];
@@ -682,7 +681,7 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
 
                     {/* Stats grid — 8 columns matching the Excel sheet */}
                     <div className="p-5">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-9 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
                         {stats.map(({ label, value, style }) => (
                           <div
                             key={label}
@@ -743,7 +742,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                                 { key: "card",              label: "CARD",               sysVal: branch.totals.card              },
                                 { key: "counterFlow",       label: "COUNTER FLOW",       sysVal: branch.totals.counterFlow       },
                                 { key: "manuallyCollected", label: "Manually Collected", sysVal: branch.totals.manuallyCollected || 0 },
-                                { key: "collectedDue",      label: "DUE COLLECTED",      sysVal: branch.totals.collectedDue      },
                               ].map(({ key, label, sysVal }) => {
                                 const rawVal = verifyAmounts[branch.branchId]?.[key] ?? "";
                                 const manualVal = rawVal === "" ? null : parseFloat(rawVal);
@@ -826,7 +824,7 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                     </span>
                   </div>
                   <div className="p-5">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-9 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
                       {[
                         { label: "CASH",          value: summary.branchSummaries.reduce((s: number, b: any) => s + b.totals.cash,              0) },
                         { label: "G.PAY",         value: summary.branchSummaries.reduce((s: number, b: any) => s + b.totals.gpay,              0) },
@@ -834,7 +832,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                         { label: "COUNTER FLOW",  value: summary.branchSummaries.reduce((s: number, b: any) => s + b.totals.counterFlow,       0) },
                         { label: "MANUALLY COLL.",value: summary.branchSummaries.reduce((s: number, b: any) => s + (b.totals.manuallyCollected || 0), 0) },
                         { label: "DUE CREATED",   value: summary.branchSummaries.reduce((s: number, b: any) => s + b.totals.totalDue,          0) },
-                        { label: "DUE COLLECTED", value: summary.branchSummaries.reduce((s: number, b: any) => s + b.totals.collectedDue,      0) },
                         { label: "C.T SUM",       value: summary.metrics.totalCollection },
                         { label: "+/- DIFF",      value: summary.branchSummaries.reduce((s: number, b: any) => s + (b.totals.manualTotal || 0), 0) },
                       ].map(({ label, value }) => (
