@@ -11,7 +11,6 @@ import {
   Lock,
   AlertTriangle,
   User,
-  Download,
   Building2,
 } from "lucide-react";
 import Image from "next/image";
@@ -199,16 +198,6 @@ export default function AdminDashboard({ session }: AdminDashboardProps) {
                 className="pl-8 pr-3 py-2 bg-[#FDF6EE] border border-[#E8D5B0] rounded-lg text-xs font-semibold text-[#1A0A0A] focus:outline-none focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
               />
             </div>
-
-            {/* Export */}
-            <a
-              href={`/api/reports/export?branchId=${session.branchId}&date=${selectedDate}`}
-              download
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#FDF6EE] hover:bg-[#F0E4CC] text-xs font-bold text-[#5C4A3A] border border-[#E8D5B0] transition-all cursor-pointer"
-            >
-              <Download size={13} />
-              <span>Export</span>
-            </a>
 
             {/* Save / Lock */}
             {!isReadOnly ? (
