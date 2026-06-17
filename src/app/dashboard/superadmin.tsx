@@ -30,7 +30,7 @@ import {
   Receipt,
   Wallet,
   CalendarRange,
-  Circle,
+  AlertCircle,
 } from "lucide-react";
 import Image from "next/image";
 import ExcelGrid, { ReportEntryData } from "@/components/ExcelGrid";
@@ -62,9 +62,21 @@ interface SummaryData {
 interface RangeBranchRow {
   branchId: string;
   branchName: string;
+  cash: Record<string, number>;
+  gpay: Record<string, number>;
+  card: Record<string, number>;
+  counterFlow: Record<string, number>;
   due: Record<string, number>;
   manuallyCollected: Record<string, number>;
   ctSum: Record<string, number>;
+  present: Record<string, boolean>;
+}
+
+// One branch×day verification record (mirrors /api/verifications response)
+interface VerifyInfo {
+  verified: boolean;
+  verifiedBy: string | null;
+  verifiedAt: string | null;
 }
 
 interface RangeData {
@@ -135,10 +147,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<{ reports: number; auditLogs: number } | null>(null);
 
-  // Live Verify state (UI-only, not persisted to DB)
-  const [verifyOpen, setVerifyOpen] = useState<Record<string, boolean>>({});
-  const [verifyAmounts, setVerifyAmounts] = useState<Record<string, Record<string, string>>>({});
-
   // Date-range matrix state (Due / Manually Collected tabs)
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
@@ -150,10 +158,12 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
   const [ctTo, setCtTo] = useState("");
   const [ctData, setCtData] = useState<RangeData | null>(null);
   const [ctLoading, setCtLoading] = useState(false);
-  // branchId -> businessDate -> verified flag
-  const [ctVerifyMap, setCtVerifyMap] = useState<Record<string, Record<string, boolean>>>({});
+  // branchId -> businessDate -> verification record
+  const [ctVerifyMap, setCtVerifyMap] = useState<Record<string, Record<string, VerifyInfo>>>({});
   // "branchId|date" keys currently being saved (to disable + spin)
   const [ctSaving, setCtSaving] = useState<Record<string, boolean>>({});
+  // The branch×day cell whose breakdown panel is expanded (null = none)
+  const [ctExpanded, setCtExpanded] = useState<{ branchId: string; date: string } | null>(null);
 
   useEffect(() => { setSelectedDate(getBusinessDate(new Date())); }, []);
 
@@ -200,12 +210,13 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
       if (rangeRes.ok) setCtData(await rangeRes.json());
       if (verRes.ok) {
         const v = await verRes.json();
-        const map: Record<string, Record<string, boolean>> = {};
-        const src = (v.verifications || {}) as Record<string, Record<string, { verified: boolean }>>;
+        const map: Record<string, Record<string, VerifyInfo>> = {};
+        const src = (v.verifications || {}) as Record<string, Record<string, { verified: boolean; verifiedAt: string | null; verifiedBy: string | null }>>;
         for (const branchId of Object.keys(src)) {
           map[branchId] = {};
           for (const date of Object.keys(src[branchId])) {
-            map[branchId][date] = !!src[branchId][date].verified;
+            const r = src[branchId][date];
+            map[branchId][date] = { verified: !!r.verified, verifiedBy: r.verifiedBy ?? null, verifiedAt: r.verifiedAt ?? null };
           }
         }
         setCtVerifyMap(map);
@@ -224,22 +235,34 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
   const toggleDayVerify = async (branchId: string, date: string) => {
     const key = `${branchId}|${date}`;
     if (ctSaving[key]) return;
-    const next = !(ctVerifyMap[branchId]?.[date]);
+    const prev = ctVerifyMap[branchId]?.[date] ?? null;
+    const next = !(prev?.verified);
     setCtSaving((s) => ({ ...s, [key]: true }));
     // Optimistic update
-    setCtVerifyMap((m) => ({ ...m, [branchId]: { ...(m[branchId] || {}), [date]: next } }));
+    const optimistic: VerifyInfo = {
+      verified: next,
+      verifiedBy: next ? (session.name || null) : null,
+      verifiedAt: next ? new Date().toISOString() : null,
+    };
+    setCtVerifyMap((m) => ({ ...m, [branchId]: { ...(m[branchId] || {}), [date]: optimistic } }));
     try {
       const res = await fetch("/api/verifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ branchId, businessDate: date, verified: next }),
       });
-      if (!res.ok) {
+      if (res.ok) {
+        const data = await res.json();
+        setCtVerifyMap((m) => ({
+          ...m,
+          [branchId]: { ...(m[branchId] || {}), [date]: { verified: !!data.verified, verifiedBy: data.verifiedBy ?? null, verifiedAt: data.verifiedAt ?? null } },
+        }));
+      } else {
         // Revert on failure
-        setCtVerifyMap((m) => ({ ...m, [branchId]: { ...(m[branchId] || {}), [date]: !next } }));
+        setCtVerifyMap((m) => ({ ...m, [branchId]: { ...(m[branchId] || {}), [date]: prev ?? { verified: false, verifiedBy: null, verifiedAt: null } } }));
       }
     } catch {
-      setCtVerifyMap((m) => ({ ...m, [branchId]: { ...(m[branchId] || {}), [date]: !next } }));
+      setCtVerifyMap((m) => ({ ...m, [branchId]: { ...(m[branchId] || {}), [date]: prev ?? { verified: false, verifiedBy: null, verifiedAt: null } } }));
     } finally {
       setCtSaving((s) => { const n = { ...s }; delete n[key]; return n; });
     }
@@ -789,9 +812,11 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                 const colTotals: Record<string, number> = {};
                 dates.forEach((d) => { colTotals[d] = rows.reduce((s, b) => s + (b.ctSum[d] || 0), 0); });
                 const grand = dates.reduce((s, d) => s + colTotals[d], 0);
-                const totalCells = rows.length * dates.length;
-                let verifiedCells = 0;
-                rows.forEach((b) => dates.forEach((d) => { if (ctVerifyMap[b.branchId]?.[d]) verifiedCells++; }));
+                // Only branch×day cells that actually have a submitted report count toward verification
+                let presentCells = 0, verifiedCells = 0;
+                rows.forEach((b) => dates.forEach((d) => {
+                  if (b.present[d]) { presentCells++; if (ctVerifyMap[b.branchId]?.[d]?.verified) verifiedCells++; }
+                }));
                 return (
                   <div className="space-y-4">
                     {/* Controls */}
@@ -800,7 +825,7 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                         <ShieldCheck size={18} className="text-[#1B8A7A]" />
                         <div>
                           <h3 className="text-sm font-extrabold text-[#8B1A1A]">C.T Sum — Day-wise Verification</h3>
-                          <p className="text-[10px] text-[#9A7E6A] font-semibold mt-0.5">Tick each branch&apos;s daily C.T Sum once checked · saved automatically</p>
+                          <p className="text-[10px] text-[#9A7E6A] font-semibold mt-0.5">Click a day to review its breakdown, then mark it verified · saved automatically</p>
                         </div>
                       </div>
                       <div className="flex items-end gap-3 ml-auto flex-wrap">
@@ -843,11 +868,19 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
 
                     {/* Matrix */}
                     <div className="bg-white border border-[#E8D5B0] rounded-xl shadow-sm overflow-hidden">
-                      <div className="px-6 py-4 flex items-center gap-2 bg-[#1B8A7A]">
-                        <ShieldCheck size={15} className="text-white" />
-                        <h3 className="text-sm font-bold text-white">C.T Sum Verification</h3>
+                      <div className="px-6 py-4 flex flex-wrap items-center gap-x-4 gap-y-2 bg-[#1B8A7A]">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck size={15} className="text-white" />
+                          <h3 className="text-sm font-bold text-white">C.T Sum Verification</h3>
+                        </div>
+                        {/* Legend */}
+                        <div className="flex items-center gap-3 text-[10px] font-semibold text-white/80">
+                          <span className="flex items-center gap-1"><CheckCircle size={11} className="text-white" /> Verified</span>
+                          <span className="flex items-center gap-1"><AlertCircle size={11} className="text-white" /> Pending</span>
+                          <span className="flex items-center gap-1"><span className="text-white/60">—</span> No report</span>
+                        </div>
                         <span className="text-[10px] text-white/70 font-semibold ml-auto">
-                          {verifiedCells}/{totalCells} verified · {dates.length} day{dates.length === 1 ? "" : "s"} · {ctData?.from} → {ctData?.to}
+                          {verifiedCells}/{presentCells} verified · {dates.length} day{dates.length === 1 ? "" : "s"} · {ctData?.from} → {ctData?.to}
                         </span>
                       </div>
                       <div className="overflow-x-auto">
@@ -869,46 +902,127 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                             ) : (
                               rows.map((b) => {
                                 const rowTotal = dates.reduce((s, d) => s + (b.ctSum[d] || 0), 0);
-                                const rowVerified = dates.filter((d) => ctVerifyMap[b.branchId]?.[d]).length;
+                                const presentD = dates.filter((d) => b.present[d]);
+                                const rowVerified = presentD.filter((d) => ctVerifyMap[b.branchId]?.[d]?.verified).length;
                                 return (
-                                  <tr key={b.branchId} className="hover:bg-[#FDF6EE] transition-colors">
-                                    <td className="py-3 px-4 sticky left-0 bg-white z-10 border-r border-[#E8D5B0]">
-                                      <span className="font-bold text-[#8B1A1A]">{b.branchName}</span>
-                                      <span className="block text-[10px] text-[#9A7E6A] mt-0.5">{rowVerified}/{dates.length} verified</span>
-                                    </td>
-                                    {dates.map((d) => {
-                                      const v = b.ctSum[d] || 0;
-                                      const verified = !!ctVerifyMap[b.branchId]?.[d];
-                                      const key = `${b.branchId}|${d}`;
-                                      const saving = !!ctSaving[key];
+                                  <React.Fragment key={b.branchId}>
+                                    <tr className="hover:bg-[#FDF6EE] transition-colors">
+                                      <td className="py-3 px-4 sticky left-0 bg-white z-10 border-r border-[#E8D5B0]">
+                                        <span className="font-bold text-[#8B1A1A]">{b.branchName}</span>
+                                        <span className="block text-[10px] text-[#9A7E6A] mt-0.5">{rowVerified}/{presentD.length} verified</span>
+                                      </td>
+                                      {dates.map((d) => {
+                                        const has = !!b.present[d];
+                                        const v = b.ctSum[d] || 0;
+                                        const verified = !!ctVerifyMap[b.branchId]?.[d]?.verified;
+                                        const isOpen = ctExpanded?.branchId === b.branchId && ctExpanded?.date === d;
+                                        if (!has) {
+                                          return (
+                                            <td key={d} className="py-2 px-2 text-center border-r border-[#E8D5B0]">
+                                              <span className="inline-block text-[11px] text-[#C9B8A8]">—</span>
+                                            </td>
+                                          );
+                                        }
+                                        return (
+                                          <td key={d} className="py-2 px-2 text-center border-r border-[#E8D5B0]">
+                                            <button
+                                              onClick={() => setCtExpanded(isOpen ? null : { branchId: b.branchId, date: d })}
+                                              title={verified ? "Verified — click to review / unverify" : "Pending — click to review & verify"}
+                                              className={`w-full flex flex-col items-center gap-1 px-2 py-1.5 rounded-lg border transition-all cursor-pointer ${isOpen ? "ring-2 ring-[#C9A227] " : ""}${
+                                                verified
+                                                  ? "bg-[#1B8A7A]/15 border-[#1B8A7A]/50 hover:bg-[#1B8A7A]/25"
+                                                  : "bg-red-50 border-red-300 hover:bg-red-100"
+                                              }`}
+                                            >
+                                              {verified ? (
+                                                <CheckCircle size={14} className="text-[#1B8A7A]" />
+                                              ) : (
+                                                <AlertCircle size={14} className="text-red-500" />
+                                              )}
+                                              <span className={`text-[11px] font-bold ${verified ? "text-[#1B8A7A]" : "text-red-600"}`}>
+                                                {formatCurrency(v)}
+                                              </span>
+                                            </button>
+                                          </td>
+                                        );
+                                      })}
+                                      <td className="py-3 px-3 text-right font-extrabold text-[#8B1A1A] bg-[#FDF6EE]">{formatCurrency(rowTotal)}</td>
+                                    </tr>
+
+                                    {/* Expanded breakdown + verify action for the selected day */}
+                                    {ctExpanded?.branchId === b.branchId && b.present[ctExpanded.date] && (() => {
+                                      const ed = ctExpanded.date;
+                                      const info = ctVerifyMap[b.branchId]?.[ed];
+                                      const isVer = !!info?.verified;
+                                      const saving = !!ctSaving[`${b.branchId}|${ed}`];
+                                      const modes = [
+                                        { label: "CASH", value: b.cash[ed] || 0 },
+                                        { label: "G.PAY", value: b.gpay[ed] || 0 },
+                                        { label: "CARD", value: b.card[ed] || 0 },
+                                        { label: "COUNTER FLOW", value: b.counterFlow[ed] || 0 },
+                                        { label: "DUE CREATED", value: b.due[ed] || 0 },
+                                      ];
+                                      const mc = b.manuallyCollected[ed] || 0;
                                       return (
-                                        <td key={d} className="py-2 px-2 text-center border-r border-[#E8D5B0]">
-                                          <button
-                                            onClick={() => toggleDayVerify(b.branchId, d)}
-                                            disabled={saving}
-                                            title={verified ? "Verified — click to unverify" : "Click to mark verified"}
-                                            className={`w-full flex flex-col items-center gap-1 px-2 py-1.5 rounded-lg border transition-all cursor-pointer disabled:opacity-60 ${
-                                              verified
-                                                ? "bg-[#1B8A7A]/12 border-[#1B8A7A]/40 hover:bg-[#1B8A7A]/20"
-                                                : "bg-white border-[#E8D5B0] hover:border-[#C9A227] hover:bg-[#FDF6EE]"
-                                            }`}
-                                          >
-                                            {saving ? (
-                                              <RefreshCw size={14} className="animate-spin text-[#9A7E6A]" />
-                                            ) : verified ? (
-                                              <CheckCircle size={14} className="text-[#1B8A7A]" />
-                                            ) : (
-                                              <Circle size={14} className="text-[#C9B8A8]" />
-                                            )}
-                                            <span className={`text-[11px] font-semibold ${verified ? "text-[#1B8A7A]" : v > 0 ? "text-[#5C4A3A]" : "text-[#C9B8A8]"}`}>
-                                              {v > 0 ? formatCurrency(v) : "—"}
-                                            </span>
-                                          </button>
-                                        </td>
+                                        <tr>
+                                          <td colSpan={dates.length + 2} className="p-0 bg-[#FBF3E7] border-b-2 border-[#C9A227]/30">
+                                            <div className="p-4 flex flex-wrap items-stretch gap-4">
+                                              {/* Breakdown */}
+                                              <div className="flex-1 min-w-[300px]">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                  <Building size={13} className="text-[#8B1A1A]" />
+                                                  <span className="text-xs font-extrabold text-[#8B1A1A]">{b.branchName}</span>
+                                                  <span className="text-[10px] font-semibold text-[#9A7E6A]">· {shortDay(ed)}</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                  {modes.map((m) => (
+                                                    <div key={m.label} className="px-3 py-2 rounded-lg bg-white border border-[#E8D5B0] min-w-[96px]">
+                                                      <p className="text-[9px] font-bold text-[#9A7E6A] uppercase tracking-wider">{m.label}</p>
+                                                      <p className="text-xs font-extrabold text-[#1A0A0A] mt-0.5">{formatCurrency(m.value)}</p>
+                                                    </div>
+                                                  ))}
+                                                  <div className="px-3 py-2 rounded-lg bg-[#8B1A1A]/5 border border-[#8B1A1A]/20 min-w-[110px]">
+                                                    <p className="text-[9px] font-bold text-[#8B1A1A] uppercase tracking-wider">C.T Sum</p>
+                                                    <p className="text-sm font-extrabold text-[#8B1A1A] mt-0.5">{formatCurrency(b.ctSum[ed] || 0)}</p>
+                                                  </div>
+                                                </div>
+                                                <p className="text-[10px] text-[#9A7E6A] mt-2">
+                                                  Manually Collected: <span className="font-bold text-[#5C4A3A]">{formatCurrency(mc)}</span> <span className="italic">(not included in C.T Sum)</span>
+                                                </p>
+                                              </div>
+                                              {/* Verify action */}
+                                              <div className="flex flex-col items-stretch justify-center gap-1.5 min-w-[200px]">
+                                                <button
+                                                  onClick={() => toggleDayVerify(b.branchId, ed)}
+                                                  disabled={saving}
+                                                  className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold border transition-all cursor-pointer disabled:opacity-60 ${
+                                                    isVer
+                                                      ? "bg-[#1B8A7A] border-[#1B8A7A] text-white hover:bg-[#15705F]"
+                                                      : "bg-red-500 border-red-500 text-white hover:bg-red-600"
+                                                  }`}
+                                                >
+                                                  {saving ? <RefreshCw size={14} className="animate-spin" /> : isVer ? <CheckCircle size={14} /> : <ShieldCheck size={14} />}
+                                                  {saving ? "Saving…" : isVer ? "Verified — click to unverify" : "Mark as Verified"}
+                                                </button>
+                                                {isVer && info?.verifiedBy && (
+                                                  <p className="text-[10px] text-center text-[#9A7E6A]">
+                                                    by <span className="font-bold text-[#5C4A3A]">{info.verifiedBy}</span>
+                                                    {info.verifiedAt && <> · {new Date(info.verifiedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</>}
+                                                  </p>
+                                                )}
+                                                <button
+                                                  onClick={() => setCtExpanded(null)}
+                                                  className="text-[10px] font-bold text-[#9A7E6A] hover:text-[#5C4A3A] uppercase tracking-wider cursor-pointer"
+                                                >
+                                                  Close
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
                                       );
-                                    })}
-                                    <td className="py-3 px-3 text-right font-extrabold text-[#8B1A1A] bg-[#FDF6EE]">{formatCurrency(rowTotal)}</td>
-                                  </tr>
+                                    })()}
+                                  </React.Fragment>
                                 );
                               })
                             )}
@@ -981,6 +1095,7 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                         isReadOnly={true}
                         saveStatus="saved"
                         branchName={branches.find((b: any) => b.id === selectedBranchId)?.name}
+                        hideDueBills={true}
                       />
                     </div>
                   )}
@@ -1079,17 +1194,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                             )}
                           </span>
                         )}
-                        <button
-                          onClick={() => setVerifyOpen((prev) => ({ ...prev, [branch.branchId]: !prev[branch.branchId] }))}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
-                            verifyOpen[branch.branchId]
-                              ? "bg-[#C9A227] border-[#C9A227] text-[#1A0A0A]"
-                              : "bg-white/10 border-white/20 text-white/70 hover:bg-white/20 hover:text-white"
-                          }`}
-                        >
-                          <ShieldCheck size={11} />
-                          {verifyOpen[branch.branchId] ? "Hide Verify" : "Verify"}
-                        </button>
                       </div>
                     </div>
 
@@ -1123,73 +1227,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                         ))}
                       </div>
                     </div>
-
-                    {/* Manual Verification panel — shown only when Verify is toggled on */}
-                    {verifyOpen[branch.branchId] && (
-                      <div className="px-5 pb-4">
-                        <div className="rounded-lg border border-[#C9A227]/40 overflow-hidden">
-                          <div className="flex items-center justify-between px-4 py-2.5 bg-[#C9A227]/10 border-b border-[#C9A227]/30">
-                            <div className="flex items-center gap-1.5">
-                              <ShieldCheck size={12} className="text-[#8B6014]" />
-                              <p className="text-xs font-bold text-[#8B6014] uppercase tracking-wider">Manual Verification</p>
-                            </div>
-                            <button
-                              onClick={() => setVerifyAmounts((prev) => ({ ...prev, [branch.branchId]: {} }))}
-                              className="text-[10px] font-bold text-[#9A7E6A] hover:text-[#5C4A3A] uppercase tracking-wider cursor-pointer"
-                            >
-                              Clear
-                            </button>
-                          </div>
-                          <table className="w-full text-xs border-collapse">
-                            <thead>
-                              <tr className="border-b border-[#E8D5B0] bg-[#FDF6EE]">
-                                <th className="py-2 px-4 text-left font-bold text-[#9A7E6A] uppercase tracking-wider">Mode</th>
-                                <th className="py-2 px-4 text-right font-bold text-[#9A7E6A] uppercase tracking-wider">System Total</th>
-                                <th className="py-2 px-4 text-right font-bold text-[#9A7E6A] uppercase tracking-wider">Manual Count</th>
-                                <th className="py-2 px-4 text-right font-bold text-[#9A7E6A] uppercase tracking-wider">Difference</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[#E8D5B0]">
-                              {[
-                                { key: "cash",              label: "CASH",               sysVal: branch.totals.cash              },
-                                { key: "gpay",              label: "G.PAY",              sysVal: branch.totals.gpay              },
-                                { key: "card",              label: "CARD",               sysVal: branch.totals.card              },
-                                { key: "counterFlow",       label: "COUNTER FLOW",       sysVal: branch.totals.counterFlow       },
-                                { key: "manuallyCollected", label: "Manually Collected", sysVal: branch.totals.manuallyCollected || 0 },
-                              ].map(({ key, label, sysVal }) => {
-                                const rawVal = verifyAmounts[branch.branchId]?.[key] ?? "";
-                                const manualVal = rawVal === "" ? null : parseFloat(rawVal);
-                                const diff = manualVal !== null ? manualVal - sysVal : null;
-                                const isMatch = diff === 0;
-                                return (
-                                  <tr key={key} className="hover:bg-[#FDF6EE] transition-colors">
-                                    <td className="py-2.5 px-4 font-bold text-[#5C4A3A] uppercase tracking-wide">{label}</td>
-                                    <td className="py-2.5 px-4 text-right font-semibold text-[#1A0A0A]">{formatCurrency(sysVal)}</td>
-                                    <td className="py-2.5 px-4 text-right">
-                                      <input
-                                        type="number"
-                                        value={rawVal}
-                                        onChange={(e) => setVerifyAmounts((prev) => ({
-                                          ...prev,
-                                          [branch.branchId]: { ...(prev[branch.branchId] ?? {}), [key]: e.target.value },
-                                        }))}
-                                        placeholder="Enter amount"
-                                        className="w-36 text-right px-2 py-1 border border-[#E8D5B0] rounded bg-white text-xs font-semibold focus:outline-none focus:border-[#C9A227] focus:ring-1 focus:ring-[#C9A227]/30"
-                                      />
-                                    </td>
-                                    <td className={`py-2.5 px-4 text-right font-extrabold ${
-                                      diff === null ? "text-[#9A7E6A]" : isMatch ? "text-[#1B8A7A]" : "text-red-600"
-                                    }`}>
-                                      {diff === null ? "—" : isMatch ? "Match" : formatCurrency(diff)}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
 
                     {/* Discrepancy alert — only shown when +/- is non-zero */}
                     {hasDiff && branchAlerts.length > 0 && (

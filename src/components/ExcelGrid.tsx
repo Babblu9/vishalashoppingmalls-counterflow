@@ -70,6 +70,8 @@ interface ExcelGridProps {
   saveStatus: "draft" | "saving" | "saved" | "error";
   /** Branch name — used to restrict DUE columns to Counter 2 & 3 only in Siddipet */
   branchName?: string;
+  /** When true, hides the right-hand "Due Bills" summary box (used in the super-admin Overview). */
+  hideDueBills?: boolean;
 }
 
 interface ColumnConfig {
@@ -119,7 +121,7 @@ function hasMissingDueDetails(row: ReportEntryData): boolean {
   return false;
 }
 
-export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, branchName }: ExcelGridProps) {
+export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, branchName, hideDueBills }: ExcelGridProps) {
   const [focusedCell, setFocusedCell] = useState<{ rowIndex: number; colIndex: number } | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [editingValue, setEditingValue] = useState<string>("");
@@ -780,7 +782,8 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
           </table>
         </div>
 
-        {/* Due Bills Summary — two sections */}
+        {/* Due Bills Summary — two sections (hidden on the super-admin Overview) */}
+        {!hideDueBills && (
         <div className="bg-white border border-[#E8D5B0] rounded-xl overflow-hidden shadow-md">
           <div className="px-5 py-3 bg-[#8B1A1A] flex items-center gap-2 border-b border-[#C9A227]/30">
             <div className="h-2 w-2 rounded-full bg-[#C9A227]"></div>
@@ -994,6 +997,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
           </div>
 
         </div>
+        )}
       </div>
     </div>
   );

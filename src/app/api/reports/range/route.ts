@@ -52,14 +52,19 @@ export async function GET(request: Request) {
       include: { entries: true },
     });
 
-    // Aggregate: branchId -> date -> { due, manuallyCollected, ctSum }
-    const agg = new Map<string, Map<string, { due: number; manuallyCollected: number; ctSum: number }>>();
+    // Aggregate: branchId -> date -> per-mode breakdown + derived ctSum
+    type Cell = { cash: number; gpay: number; card: number; counterFlow: number; due: number; manuallyCollected: number; ctSum: number };
+    const agg = new Map<string, Map<string, Cell>>();
     for (const report of reports) {
       let byDate = agg.get(report.branchId);
       if (!byDate) { byDate = new Map(); agg.set(report.branchId, byDate); }
       let cell = byDate.get(report.businessDate);
-      if (!cell) { cell = { due: 0, manuallyCollected: 0, ctSum: 0 }; byDate.set(report.businessDate, cell); }
+      if (!cell) { cell = { cash: 0, gpay: 0, card: 0, counterFlow: 0, due: 0, manuallyCollected: 0, ctSum: 0 }; byDate.set(report.businessDate, cell); }
       for (const entry of report.entries) {
+        cell.cash += entry.cash || 0;
+        cell.gpay += entry.gpay || 0;
+        cell.card += entry.card || 0;
+        cell.counterFlow += entry.counterFlow || 0;
         cell.due += entry.totalDue || 0;
         cell.manuallyCollected += (entry as { manuallyCollected?: number }).manuallyCollected || 0;
         // C.T Sum = cash + gpay + card + counterFlow + totalDue (Manually Collected NOT included)
@@ -69,16 +74,26 @@ export async function GET(request: Request) {
 
     const branchRows = branches.map((branch) => {
       const byDate = agg.get(branch.id);
+      const cash: Record<string, number> = {};
+      const gpay: Record<string, number> = {};
+      const card: Record<string, number> = {};
+      const counterFlow: Record<string, number> = {};
       const due: Record<string, number> = {};
       const manuallyCollected: Record<string, number> = {};
       const ctSum: Record<string, number> = {};
+      const present: Record<string, boolean> = {};
       for (const date of dates) {
         const cell = byDate?.get(date);
+        cash[date] = cell?.cash || 0;
+        gpay[date] = cell?.gpay || 0;
+        card[date] = cell?.card || 0;
+        counterFlow[date] = cell?.counterFlow || 0;
         due[date] = cell?.due || 0;
         manuallyCollected[date] = cell?.manuallyCollected || 0;
         ctSum[date] = cell?.ctSum || 0;
+        present[date] = !!cell; // a DailyReport exists for this branch+date
       }
-      return { branchId: branch.id, branchName: branch.name, due, manuallyCollected, ctSum };
+      return { branchId: branch.id, branchName: branch.name, cash, gpay, card, counterFlow, due, manuallyCollected, ctSum, present };
     });
 
     return NextResponse.json({
