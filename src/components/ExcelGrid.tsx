@@ -92,12 +92,19 @@ const COLUMNS: ColumnConfig[] = [
   { header: "+/-", key: "manualTotal", type: "number", editable: true },
 ];
 
-/** Returns true if the given counter can enter DUE amounts.
- *  Rule: In Siddipet, only Counter 2 and Counter 3 are allowed. All counters allowed in other branches. */
+/** Returns true if the given counter can enter DUE amounts and bill details.
+ *  Rules:
+ *    Siddipet  → Counter 2 and Counter 3 only
+ *    Siricilla → Counter 6 only
+ *    All other branches → all counters allowed */
 function isDueAllowed(counterName: string, branchName?: string): boolean {
   if (!branchName) return true;
-  if (branchName.toLowerCase() === "siddipet") {
+  const branch = branchName.toLowerCase();
+  if (branch === "siddipet") {
     return counterName === "Counter 2" || counterName === "Counter 3";
+  }
+  if (branch === "siricilla") {
+    return counterName === "Counter 6";
   }
   return true;
 }
@@ -352,20 +359,24 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                 return (
                   <React.Fragment key={row.counterId}>
                     <tr className={`transition-colors ${hasDiff ? "bg-red-50 hover:bg-red-100/60" : "hover:bg-[#FDF6EE]"}`}>
-                      {/* Toggle */}
+                      {/* Toggle — hide for non-permitted counters in edit mode (show in read-only for existing data) */}
                       <td className="p-0 text-center border-r border-[#E8D5B0]">
-                        <button
-                          onClick={() => toggleRow(rIdx)}
-                          className={`w-full h-full py-2.5 px-1 transition-colors ${
-                            missingDetails
-                              ? "text-red-500 hover:text-red-700"
-                              : "text-[#C9A227] hover:text-[#8B1A1A]"
-                          }`}
-                          title={missingDetails ? "Due details are incomplete — click to fill in" : "Toggle Due Bill Details"}
-                        >
-                          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                          {missingDetails && <span className="block w-1.5 h-1.5 rounded-full bg-red-500 mx-auto mt-0.5" />}
-                        </button>
+                        {(dueAllowed || isReadOnly) ? (
+                          <button
+                            onClick={() => toggleRow(rIdx)}
+                            className={`w-full h-full py-2.5 px-1 transition-colors ${
+                              missingDetails
+                                ? "text-red-500 hover:text-red-700"
+                                : "text-[#C9A227] hover:text-[#8B1A1A]"
+                            }`}
+                            title={missingDetails ? "Due details are incomplete — click to fill in" : "Toggle Due Bill Details"}
+                          >
+                            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                            {missingDetails && <span className="block w-1.5 h-1.5 rounded-full bg-red-500 mx-auto mt-0.5" />}
+                          </button>
+                        ) : (
+                          <div className="w-full h-full py-2.5 px-1" />
+                        )}
                       </td>
 
                       {COLUMNS.map((col, cIdx) => {
@@ -481,7 +492,16 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                         <td colSpan={COLUMNS.length} className="px-5 py-3">
                           <div className="flex flex-col gap-4">
 
-                            {/* DUE CREATED Details */}
+                            {/* Non-permitted counter: show locked message in edit mode */}
+                            {!dueAllowed && !isReadOnly && (
+                              <p className="text-[9px] text-[#9A7E6A] italic flex items-center gap-1">
+                                <Lock size={9} className="shrink-0" />
+                                Due bill and manually collected bill entry is not available for this counter.
+                              </p>
+                            )}
+
+                            {/* DUE CREATED Details — only for permitted counters (always shown in read-only for existing data) */}
+                            {(dueAllowed || isReadOnly) && (
                             <div>
                               <div className="flex items-center gap-2 mb-2">
                                 <span className="text-[10px] font-bold text-[#1B8A7A] uppercase tracking-widest">
@@ -579,11 +599,13 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                                 </div>
                               )}
                             </div>
+                            )}
 
-                            {/* Divider */}
-                            <div className="border-t border-[#E8D5B0]" />
+                            {/* Divider — only between two visible sections */}
+                            {(dueAllowed || isReadOnly) && <div className="border-t border-[#E8D5B0]" />}
 
-                            {/* MANUALLY COLLECTED Bills Details */}
+                            {/* MANUALLY COLLECTED Bills Details — only for permitted counters */}
+                            {(dueAllowed || isReadOnly) && (
                             <div>
                               <div className="flex items-center gap-2 mb-2">
                                 <span className="text-[10px] font-bold text-[#5C4A3A] uppercase tracking-widest">
@@ -666,9 +688,10 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                                       )}
                                     </div>
                                   ))}
-                                </div>
+                                 </div>
                               )}
                             </div>
+                            )}
 
                           </div>
                         </td>
