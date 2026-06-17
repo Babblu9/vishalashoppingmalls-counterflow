@@ -30,6 +30,7 @@ import {
   Receipt,
   Wallet,
   CalendarRange,
+  Circle,
 } from "lucide-react";
 import Image from "next/image";
 import ExcelGrid, { ReportEntryData } from "@/components/ExcelGrid";
@@ -63,6 +64,7 @@ interface RangeBranchRow {
   branchName: string;
   due: Record<string, number>;
   manuallyCollected: Record<string, number>;
+  ctSum: Record<string, number>;
 }
 
 interface RangeData {
@@ -143,6 +145,16 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
   const [rangeData, setRangeData] = useState<RangeData | null>(null);
   const [rangeLoading, setRangeLoading] = useState(false);
 
+  // C.T Sum day-wise verification matrix state (Overview tab) — persisted to DB
+  const [ctFrom, setCtFrom] = useState("");
+  const [ctTo, setCtTo] = useState("");
+  const [ctData, setCtData] = useState<RangeData | null>(null);
+  const [ctLoading, setCtLoading] = useState(false);
+  // branchId -> businessDate -> verified flag
+  const [ctVerifyMap, setCtVerifyMap] = useState<Record<string, Record<string, boolean>>>({});
+  // "branchId|date" keys currently being saved (to disable + spin)
+  const [ctSaving, setCtSaving] = useState<Record<string, boolean>>({});
+
   useEffect(() => { setSelectedDate(getBusinessDate(new Date())); }, []);
 
   // Default the range tabs to the last 7 days (inclusive of today's business date)
@@ -155,6 +167,9 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
     const fd = String(sevenAgo.getUTCDate()).padStart(2, "0");
     setRangeFrom(`${fy}-${fm}-${fd}`);
     setRangeTo(today);
+    // C.T Sum verification matrix shares the same default window
+    setCtFrom(`${fy}-${fm}-${fd}`);
+    setCtTo(today);
   }, []);
 
   const fetchRangeData = async () => {
@@ -172,6 +187,63 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
     if ((activeTab === "due" || activeTab === "collected") && rangeFrom && rangeTo) fetchRangeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, rangeFrom, rangeTo]);
+
+  // Fetch the C.T Sum matrix + saved verification flags for the Overview tab
+  const fetchCtMatrix = async () => {
+    if (!ctFrom || !ctTo) return;
+    setCtLoading(true);
+    try {
+      const [rangeRes, verRes] = await Promise.all([
+        fetch(`/api/reports/range?from=${ctFrom}&to=${ctTo}`),
+        fetch(`/api/verifications?from=${ctFrom}&to=${ctTo}`),
+      ]);
+      if (rangeRes.ok) setCtData(await rangeRes.json());
+      if (verRes.ok) {
+        const v = await verRes.json();
+        const map: Record<string, Record<string, boolean>> = {};
+        const src = (v.verifications || {}) as Record<string, Record<string, { verified: boolean }>>;
+        for (const branchId of Object.keys(src)) {
+          map[branchId] = {};
+          for (const date of Object.keys(src[branchId])) {
+            map[branchId][date] = !!src[branchId][date].verified;
+          }
+        }
+        setCtVerifyMap(map);
+      }
+    } catch { /* non-critical */ } finally {
+      setCtLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "overview" && ctFrom && ctTo) fetchCtMatrix();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, ctFrom, ctTo]);
+
+  // Toggle a branch×day C.T Sum verification flag (optimistic, persisted to DB)
+  const toggleDayVerify = async (branchId: string, date: string) => {
+    const key = `${branchId}|${date}`;
+    if (ctSaving[key]) return;
+    const next = !(ctVerifyMap[branchId]?.[date]);
+    setCtSaving((s) => ({ ...s, [key]: true }));
+    // Optimistic update
+    setCtVerifyMap((m) => ({ ...m, [branchId]: { ...(m[branchId] || {}), [date]: next } }));
+    try {
+      const res = await fetch("/api/verifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branchId, businessDate: date, verified: next }),
+      });
+      if (!res.ok) {
+        // Revert on failure
+        setCtVerifyMap((m) => ({ ...m, [branchId]: { ...(m[branchId] || {}), [date]: !next } }));
+      }
+    } catch {
+      setCtVerifyMap((m) => ({ ...m, [branchId]: { ...(m[branchId] || {}), [date]: !next } }));
+    } finally {
+      setCtSaving((s) => { const n = { ...s }; delete n[key]; return n; });
+    }
+  };
 
 
   useEffect(() => {
@@ -709,6 +781,155 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                   </table>
                 </div>
               </div>
+
+              {/* C.T Sum — Day-wise Verification Matrix (persisted) */}
+              {(() => {
+                const dates = ctData?.dates ?? [];
+                const rows = ctData?.branches ?? [];
+                const colTotals: Record<string, number> = {};
+                dates.forEach((d) => { colTotals[d] = rows.reduce((s, b) => s + (b.ctSum[d] || 0), 0); });
+                const grand = dates.reduce((s, d) => s + colTotals[d], 0);
+                const totalCells = rows.length * dates.length;
+                let verifiedCells = 0;
+                rows.forEach((b) => dates.forEach((d) => { if (ctVerifyMap[b.branchId]?.[d]) verifiedCells++; }));
+                return (
+                  <div className="space-y-4">
+                    {/* Controls */}
+                    <div className="bg-white border border-[#E8D5B0] rounded-xl shadow-sm p-4 flex flex-wrap items-end gap-4">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck size={18} className="text-[#1B8A7A]" />
+                        <div>
+                          <h3 className="text-sm font-extrabold text-[#8B1A1A]">C.T Sum — Day-wise Verification</h3>
+                          <p className="text-[10px] text-[#9A7E6A] font-semibold mt-0.5">Tick each branch&apos;s daily C.T Sum once checked · saved automatically</p>
+                        </div>
+                      </div>
+                      <div className="flex items-end gap-3 ml-auto flex-wrap">
+                        <label className="flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wider text-[#9A7E6A]">
+                          From
+                          <input
+                            type="date"
+                            value={ctFrom}
+                            max={ctTo || undefined}
+                            onChange={(e) => setCtFrom(e.target.value)}
+                            className="px-3 py-1.5 bg-white border border-[#E8D5B0] rounded-lg text-xs font-semibold text-[#1A0A0A] focus:outline-none focus:border-[#C9A227]"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wider text-[#9A7E6A]">
+                          To
+                          <input
+                            type="date"
+                            value={ctTo}
+                            min={ctFrom || undefined}
+                            onChange={(e) => setCtTo(e.target.value)}
+                            className="px-3 py-1.5 bg-white border border-[#E8D5B0] rounded-lg text-xs font-semibold text-[#1A0A0A] focus:outline-none focus:border-[#C9A227]"
+                          />
+                        </label>
+                        <button
+                          onClick={fetchCtMatrix}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#C9A227] hover:bg-[#A07A15] text-xs font-bold text-white transition-all cursor-pointer"
+                        >
+                          <RefreshCw size={12} className={ctLoading ? "animate-spin" : ""} />
+                          <span>Refresh</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {ctData?.capped && (
+                      <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs font-semibold text-amber-700">
+                        <AlertTriangle size={13} />
+                        <span>Range limited to {ctData.maxDays} days. Narrow the dates to see a shorter span.</span>
+                      </div>
+                    )}
+
+                    {/* Matrix */}
+                    <div className="bg-white border border-[#E8D5B0] rounded-xl shadow-sm overflow-hidden">
+                      <div className="px-6 py-4 flex items-center gap-2 bg-[#1B8A7A]">
+                        <ShieldCheck size={15} className="text-white" />
+                        <h3 className="text-sm font-bold text-white">C.T Sum Verification</h3>
+                        <span className="text-[10px] text-white/70 font-semibold ml-auto">
+                          {verifiedCells}/{totalCells} verified · {dates.length} day{dates.length === 1 ? "" : "s"} · {ctData?.from} → {ctData?.to}
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-[#6B1212] text-[#C9A227] font-bold uppercase tracking-wider">
+                              <th className="py-3 px-4 text-left sticky left-0 bg-[#6B1212] z-10 border-r border-[#C9A227]/20 min-w-[150px]">Branch</th>
+                              {dates.map((d) => (
+                                <th key={d} className="py-3 px-3 text-center border-r border-[#C9A227]/20 whitespace-nowrap">{shortDay(d)}</th>
+                              ))}
+                              <th className="py-3 px-3 text-right bg-[#5A0F0F] whitespace-nowrap">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#E8D5B0]">
+                            {ctLoading ? (
+                              <tr><td colSpan={dates.length + 2} className="py-10 text-center text-[#9A7E6A] text-sm">Loading…</td></tr>
+                            ) : rows.length === 0 ? (
+                              <tr><td colSpan={dates.length + 2} className="py-10 text-center text-[#9A7E6A] text-sm">No data for this range.</td></tr>
+                            ) : (
+                              rows.map((b) => {
+                                const rowTotal = dates.reduce((s, d) => s + (b.ctSum[d] || 0), 0);
+                                const rowVerified = dates.filter((d) => ctVerifyMap[b.branchId]?.[d]).length;
+                                return (
+                                  <tr key={b.branchId} className="hover:bg-[#FDF6EE] transition-colors">
+                                    <td className="py-3 px-4 sticky left-0 bg-white z-10 border-r border-[#E8D5B0]">
+                                      <span className="font-bold text-[#8B1A1A]">{b.branchName}</span>
+                                      <span className="block text-[10px] text-[#9A7E6A] mt-0.5">{rowVerified}/{dates.length} verified</span>
+                                    </td>
+                                    {dates.map((d) => {
+                                      const v = b.ctSum[d] || 0;
+                                      const verified = !!ctVerifyMap[b.branchId]?.[d];
+                                      const key = `${b.branchId}|${d}`;
+                                      const saving = !!ctSaving[key];
+                                      return (
+                                        <td key={d} className="py-2 px-2 text-center border-r border-[#E8D5B0]">
+                                          <button
+                                            onClick={() => toggleDayVerify(b.branchId, d)}
+                                            disabled={saving}
+                                            title={verified ? "Verified — click to unverify" : "Click to mark verified"}
+                                            className={`w-full flex flex-col items-center gap-1 px-2 py-1.5 rounded-lg border transition-all cursor-pointer disabled:opacity-60 ${
+                                              verified
+                                                ? "bg-[#1B8A7A]/12 border-[#1B8A7A]/40 hover:bg-[#1B8A7A]/20"
+                                                : "bg-white border-[#E8D5B0] hover:border-[#C9A227] hover:bg-[#FDF6EE]"
+                                            }`}
+                                          >
+                                            {saving ? (
+                                              <RefreshCw size={14} className="animate-spin text-[#9A7E6A]" />
+                                            ) : verified ? (
+                                              <CheckCircle size={14} className="text-[#1B8A7A]" />
+                                            ) : (
+                                              <Circle size={14} className="text-[#C9B8A8]" />
+                                            )}
+                                            <span className={`text-[11px] font-semibold ${verified ? "text-[#1B8A7A]" : v > 0 ? "text-[#5C4A3A]" : "text-[#C9B8A8]"}`}>
+                                              {v > 0 ? formatCurrency(v) : "—"}
+                                            </span>
+                                          </button>
+                                        </td>
+                                      );
+                                    })}
+                                    <td className="py-3 px-3 text-right font-extrabold text-[#8B1A1A] bg-[#FDF6EE]">{formatCurrency(rowTotal)}</td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                          {rows.length > 0 && (
+                            <tfoot>
+                              <tr className="bg-[#8B1A1A] font-extrabold text-white border-t-2 border-[#C9A227]/40">
+                                <td className="py-3 px-4 sticky left-0 bg-[#8B1A1A] z-10 border-r border-[#C9A227]/20 text-[#C9A227] uppercase tracking-wider">Total</td>
+                                {dates.map((d) => (
+                                  <td key={d} className="py-3 px-3 text-right border-r border-[#C9A227]/20">{colTotals[d] > 0 ? formatCurrency(colTotals[d]) : "—"}</td>
+                                ))}
+                                <td className="py-3 px-3 text-right text-[#C9A227]">{formatCurrency(grand)}</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Branch Sheet Review */}
               <div className="bg-white border border-[#E8D5B0] rounded-xl shadow-sm overflow-hidden">

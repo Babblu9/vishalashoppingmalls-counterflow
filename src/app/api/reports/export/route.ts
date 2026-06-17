@@ -60,9 +60,9 @@ export async function GET(request: Request) {
       entriesData = report.entries
         .sort((a, b) => counterSort(a.counter.name, b.counter.name))
         .map((entry) => {
-        // G TOTAL = cash + gpay + card + counterFlow + totalDue + manuallyCollected
+        // C.T Sum = cash + gpay + card + counterFlow + totalDue  (Manually Collected is NOT included)
         const systemTotal =
-          entry.cash + entry.gpay + entry.card + entry.counterFlow + entry.totalDue + ((entry as any).manuallyCollected ?? 0);
+          entry.cash + entry.gpay + entry.card + entry.counterFlow + entry.totalDue;
 
         // Build multiline strings from JSON arrays (fallback to legacy single fields)
         const rawDue = entry.dueBillsJson as any[];
@@ -259,9 +259,9 @@ export async function GET(request: Request) {
       ws.getCell(`E${r}`).value = entry.totalDue;
       ws.getCell(`F${r}`).value = entry.counterFlow;
       ws.getCell(`G${r}`).value = entry.manuallyCollected;
-      // H: C.T Sum = B+C+D+E+F+G
+      // H: C.T Sum = B+C+D+E+F  (Manually Taken / G is NOT included)
       ws.getCell(`H${r}`).value = {
-        formula: `B${r}+C${r}+D${r}+E${r}+F${r}+G${r}`,
+        formula: `B${r}+C${r}+D${r}+E${r}+F${r}`,
         result: entry.systemTotal,
       };
       // I: +/- = user-entered discrepancy (manualTotal)
@@ -346,7 +346,7 @@ export async function GET(request: Request) {
     }
 
     // ── SYSTEM COUNTER block (col K:L, rows 7 onwards) ───────────────
-    // G TOTAL = CASH + G.PAY + CARD + COUNTER FLOW + DUE CREATED + MANUALLY TAKEN
+    // Box lists 6 component rows; G TOTAL sums all EXCEPT MANUALLY TAKEN (shown for reference only).
     // Columns: B=CASH, C=GPAY, D=CARD, E=DUE Created, F=COUNTER FLOW, G=MANUALLY TAKEN
     const scLabels = [
       { label: "CASH",           formula: `SUM(B${dataStart}:B${gtRow - 1})` },
@@ -374,7 +374,7 @@ export async function GET(request: Request) {
     });
 
     // G TOTAL row in system counter
-    // G TOTAL = CASH + GPAY + CARD + COUNTER FLOW + DUE CREATED + MANUALLY TAKEN = L[0]+L[1]+L[2]+L[3]+L[4]+L[5]
+    // G TOTAL = CASH + GPAY + CARD + COUNTER FLOW + DUE CREATED  (MANUALLY TAKEN is NOT included)
     const gtScRow = dataStart + scLabels.length; // row after the 6 label rows
     ws.getCell(`K${gtScRow}`).value = "G TOTAL";
     ws.getCell(`K${gtScRow}`).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
@@ -383,7 +383,7 @@ export async function GET(request: Request) {
     ws.getCell(`K${gtScRow}`).alignment = { vertical: "middle" };
 
     ws.getCell(`L${gtScRow}`).value = {
-      formula: `L${dataStart}+L${dataStart+1}+L${dataStart+2}+L${dataStart+3}+L${dataStart+4}+L${dataStart+5}`,
+      formula: `L${dataStart}+L${dataStart+1}+L${dataStart+2}+L${dataStart+3}+L${dataStart+4}`,
     };
     ws.getCell(`L${gtScRow}`).font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "FFFFFF" } };
     ws.getCell(`L${gtScRow}`).fill = headerFill("1D4ED8");

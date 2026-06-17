@@ -52,16 +52,18 @@ export async function GET(request: Request) {
       include: { entries: true },
     });
 
-    // Aggregate: branchId -> date -> { due, manuallyCollected }
-    const agg = new Map<string, Map<string, { due: number; manuallyCollected: number }>>();
+    // Aggregate: branchId -> date -> { due, manuallyCollected, ctSum }
+    const agg = new Map<string, Map<string, { due: number; manuallyCollected: number; ctSum: number }>>();
     for (const report of reports) {
       let byDate = agg.get(report.branchId);
       if (!byDate) { byDate = new Map(); agg.set(report.branchId, byDate); }
       let cell = byDate.get(report.businessDate);
-      if (!cell) { cell = { due: 0, manuallyCollected: 0 }; byDate.set(report.businessDate, cell); }
+      if (!cell) { cell = { due: 0, manuallyCollected: 0, ctSum: 0 }; byDate.set(report.businessDate, cell); }
       for (const entry of report.entries) {
         cell.due += entry.totalDue || 0;
         cell.manuallyCollected += (entry as { manuallyCollected?: number }).manuallyCollected || 0;
+        // C.T Sum = cash + gpay + card + counterFlow + totalDue (Manually Collected NOT included)
+        cell.ctSum += (entry.cash || 0) + (entry.gpay || 0) + (entry.card || 0) + (entry.counterFlow || 0) + (entry.totalDue || 0);
       }
     }
 
@@ -69,12 +71,14 @@ export async function GET(request: Request) {
       const byDate = agg.get(branch.id);
       const due: Record<string, number> = {};
       const manuallyCollected: Record<string, number> = {};
+      const ctSum: Record<string, number> = {};
       for (const date of dates) {
         const cell = byDate?.get(date);
         due[date] = cell?.due || 0;
         manuallyCollected[date] = cell?.manuallyCollected || 0;
+        ctSum[date] = cell?.ctSum || 0;
       }
-      return { branchId: branch.id, branchName: branch.name, due, manuallyCollected };
+      return { branchId: branch.id, branchName: branch.name, due, manuallyCollected, ctSum };
     });
 
     return NextResponse.json({

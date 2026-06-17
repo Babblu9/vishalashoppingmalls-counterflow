@@ -72,7 +72,10 @@ export async function GET(request: Request) {
           dueBillAmount += entry.dueBillAmount;
           manuallyCollected += entry.manuallyCollected;
           manualTotal += entry.manualTotal;
-          systemTotal += entry.systemTotal;
+          // C.T Sum = cash + gpay + card + counterFlow + totalDue  (Manually Collected is NOT included).
+          // Recompute here instead of trusting entry.systemTotal so historical rows (which may have
+          // included manuallyCollected) are normalized to the current definition.
+          systemTotal += entry.cash + entry.gpay + entry.card + entry.counterFlow + entry.totalDue;
           difference += Math.abs(entry.difference);
         });
       }

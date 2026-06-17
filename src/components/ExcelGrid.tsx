@@ -125,15 +125,14 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
   const [editingValue, setEditingValue] = useState<string>("");
   const editingValueRef = useRef<string>("");
 
-  // G TOTAL = cash + gpay + card + counterFlow + totalDue + manuallyCollected
+  // C.T Sum = cash + gpay + card + counterFlow + totalDue  (Manually Collected is NOT included)
   const processedData = data.map((row) => {
     const systemTotal =
       (row.cash || 0) +
       (row.gpay || 0) +
       (row.card || 0) +
       (row.counterFlow || 0) +
-      (row.totalDue || 0) +
-      (row.manuallyCollected || 0);
+      (row.totalDue || 0);
     return { ...row, systemTotal };
   });
 

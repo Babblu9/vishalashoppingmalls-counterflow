@@ -19,6 +19,7 @@ model User {
   updatedAt    DateTime      @updatedAt
   reports      DailyReport[] // Reports submitted/modified by this user
   auditLogs    AuditLog[]
+  dayVerifications DayVerification[] @relation("DayVerifiedBy")
 }
 
 model Branch {
@@ -27,6 +28,7 @@ model Branch {
   counters     Counter[]
   users        User[]
   reports      DailyReport[]
+  dayVerifications DayVerification[]
 }
 
 model Counter {
@@ -94,7 +96,7 @@ model ReportEntry {
 
   // Computed values stored for fast indexing / snapshot auditing
   manualTotal  Float       @default(0)
-  systemTotal  Float       @default(0) // cash + gpay + card + counterFlow + totalDue + manuallyCollected
+  systemTotal  Float       @default(0) // cash + gpay + card + counterFlow + totalDue (manuallyCollected NOT included)
   difference   Float       @default(0) // manualTotal - systemTotal
   grandTotal   Float       @default(0) // systemTotal
   
@@ -115,4 +117,20 @@ model AuditLog {
   ipAddress     String?
   userAgent     String?
   timestamp     DateTime     @default(now())
+}
+
+// Super-admin day-wise verification of a branch's C.T Sum for a business date.
+model DayVerification {
+  id           String    @id @default(uuid())
+  branchId     String
+  branch       Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  businessDate String    // Format: "YYYY-MM-DD"
+  verified     Boolean   @default(false)
+  verifiedById String?
+  verifiedBy   User?     @relation("DayVerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
+  verifiedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([branchId, businessDate])
 }
