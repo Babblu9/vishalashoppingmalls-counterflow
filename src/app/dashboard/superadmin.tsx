@@ -31,6 +31,9 @@ import {
   Wallet,
   CalendarRange,
   AlertCircle,
+  LogIn,
+  Send,
+  UserPlus,
 } from "lucide-react";
 import Image from "next/image";
 import ExcelGrid, { ReportEntryData } from "@/components/ExcelGrid";
@@ -458,17 +461,84 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
     }
   };
 
-  const renderLogDetails = (detailsStr: string) => {
-    try {
-      const d = JSON.parse(detailsStr);
-      if (d.message) return d.message;
-      if (d.changes) {
-        return `${d.counterName}: Changed ${Object.keys(d.changes).map(k => `${k} (₹${d.changes[k][0]} → ₹${d.changes[k][1]})`).join(", ")}`;
+  // Human-readable, single-line description for an audit log's JSON details
+  const renderLogDetails = (action: string, detailsStr: string) => {
+    let d: Record<string, any> = {};
+    try { d = JSON.parse(detailsStr); } catch { return detailsStr || "—"; }
+
+    switch (action) {
+      case "LOGIN":
+        return `Signed in${d.branchName ? ` · ${d.branchName}` : ""}`;
+      case "LOGOUT":
+        return "Signed out of the portal";
+      case "REPORT_SUBMIT":
+        return `Submitted the daily report${d.businessDate ? ` for ${shortDay(d.businessDate)}` : ""}`;
+      case "ADMIN_CREATE":
+        return `Created admin @${d.createdUsername}${d.branchName ? ` · ${d.branchName}` : ""}`;
+      case "ADMIN_EDIT": {
+        const fields = Array.isArray(d.changedFields) ? [...d.changedFields] : [];
+        if (d.passwordChanged) fields.push("password");
+        return `Edited admin @${d.targetUsername}${fields.length ? ` · ${fields.join(", ")}` : ""}`;
       }
-      if (d.values) return `${d.counterName}: Saved initial entries`;
-      return detailsStr;
-    } catch { return detailsStr; }
+      case "ADMIN_DELETE":
+        return `Deleted admin @${d.deletedUsername}`;
+      case "DATA_CLEANUP":
+        return `Cleared data before ${d.cutoffDate} · ${d.deletedReports} report(s), ${d.deletedAuditLogs} log(s)`;
+      default:
+        // SUBMIT / DRAFT_SAVE and other report-entry level logs
+        if (d.changes) {
+          return `${d.counterName}: ${Object.keys(d.changes).map((k) => `${k} ₹${d.changes[k][0]} → ₹${d.changes[k][1]}`).join(", ")}`;
+        }
+        if (d.values) return `${d.counterName}: Saved initial entries`;
+        if (d.message) return d.counterName ? `${d.counterName}: ${d.message}` : d.message;
+        return detailsStr || "—";
+    }
   };
+
+  // Visual metadata (icon + colors + label) for each audit action
+  const getActionMeta = (action: string): {
+    label: string;
+    Icon: React.ComponentType<{ size?: number; className?: string }>;
+    dot: string;
+    badge: string;
+  } => {
+    switch (action) {
+      case "LOGIN":         return { label: "Login",         Icon: LogIn,    dot: "bg-[#1B8A7A]", badge: "bg-[#1B8A7A]/10 text-[#1B8A7A] border-[#1B8A7A]/30" };
+      case "LOGOUT":        return { label: "Logout",        Icon: LogOut,   dot: "bg-[#9A7E6A]", badge: "bg-[#FDF6EE] text-[#9A7E6A] border-[#E8D5B0]" };
+      case "SUBMIT":
+      case "REPORT_SUBMIT": return { label: "Submit",        Icon: Send,     dot: "bg-[#8B1A1A]", badge: "bg-[#8B1A1A]/10 text-[#8B1A1A] border-[#8B1A1A]/20" };
+      case "DRAFT_SAVE":    return { label: "Draft Save",    Icon: Pencil,   dot: "bg-amber-500", badge: "bg-amber-50 text-amber-700 border-amber-200" };
+      case "ADMIN_CREATE":  return { label: "Admin Created", Icon: UserPlus, dot: "bg-[#1B8A7A]", badge: "bg-[#1B8A7A]/10 text-[#1B8A7A] border-[#1B8A7A]/30" };
+      case "ADMIN_EDIT":    return { label: "Admin Edited",  Icon: Pencil,   dot: "bg-[#C9A227]", badge: "bg-[#C9A227]/15 text-[#8B6014] border-[#C9A227]/40" };
+      case "ADMIN_DELETE":  return { label: "Admin Deleted", Icon: Trash2,   dot: "bg-red-500",   badge: "bg-red-50 text-red-700 border-red-200" };
+      case "DATA_CLEANUP":  return { label: "Data Cleanup",  Icon: Database, dot: "bg-red-500",   badge: "bg-red-50 text-red-700 border-red-200" };
+      default:              return { label: action,          Icon: Activity, dot: "bg-[#9A7E6A]", badge: "bg-[#FDF6EE] text-[#9A7E6A] border-[#E8D5B0]" };
+    }
+  };
+
+  // Role chip label + colors
+  const roleMeta = (role: string) =>
+    role === "SUPER_ADMIN"
+      ? { label: "Super Admin", cls: "bg-[#8B1A1A]/10 text-[#8B1A1A] border-[#8B1A1A]/20" }
+      : { label: "Branch Admin", cls: "bg-[#C9A227]/15 text-[#8B6014] border-[#C9A227]/40" };
+
+  // Day grouping helpers (logs arrive sorted newest-first)
+  const dayKey = (ts: string) => {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  };
+  const dayHeading = (ts: string) => {
+    const d = new Date(ts);
+    const today = new Date();
+    const yest = new Date(); yest.setDate(today.getDate() - 1);
+    const sameDay = (a: Date, b: Date) =>
+      a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    const full = d.toLocaleDateString("en-IN", { weekday: "long", day: "2-digit", month: "short", year: "numeric" });
+    if (sameDay(d, today)) return `Today · ${full}`;
+    if (sameDay(d, yest)) return `Yesterday · ${full}`;
+    return full;
+  };
+
 
   const getBranchLabel = (branchId: string) => branches.find(b => b.id === branchId)?.name ?? "System";
 
@@ -1300,54 +1370,84 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
 
           {activeTab === "logs" && (
             <div className="bg-white border border-[#E8D5B0] rounded-xl shadow-sm overflow-hidden">
-              <div className="px-6 py-4 bg-[#8B1A1A]">
-                <h3 className="text-sm font-bold text-white">System Security Audit Logs</h3>
-                <p className="text-xs text-white/60 mt-0.5">Chronological audit trails for data entries, modifications, logons, and lock triggers.</p>
+              <div className="px-6 py-4 bg-[#8B1A1A] flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <Activity size={16} className="text-[#C9A227] shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-bold text-white">System Security Audit Logs</h3>
+                    <p className="text-xs text-white/60 mt-0.5">Chronological audit trails for data entries, modifications, logons, and lock triggers.</p>
+                  </div>
+                </div>
+                <span className="shrink-0 px-2.5 py-1 rounded-full bg-white/10 border border-white/20 text-[10px] font-bold text-white/80 whitespace-nowrap">
+                  {auditLogs.length} event{auditLogs.length === 1 ? "" : "s"}
+                </span>
               </div>
-              <div className="overflow-x-auto max-h-[560px]">
-                <table className="w-full text-left border-collapse text-sm">
-                  <thead className="sticky top-0 bg-[#FDF6EE] z-10 border-b border-[#E8D5B0]">
-                    <tr className="text-[#9A7E6A] text-xs font-bold uppercase tracking-wider">
-                      <th className="py-3 px-5">Operator</th>
-                      <th className="py-3 px-5">Role</th>
-                      <th className="py-3 px-5">Action</th>
-                      <th className="py-3 px-5">Log Message Details</th>
-                      <th className="py-3 px-5">Timestamp</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#E8D5B0]">
-                    {auditLogs.map((log) => {
-                      const isSubmit = log.action === "SUBMIT" || log.action === "REPORT_SUBMIT";
-                      const isLogin = log.action === "LOGIN";
-                      let badge = "bg-[#FDF6EE] text-[#9A7E6A] border-[#E8D5B0]";
-                      if (isSubmit) badge = "bg-[#1B8A7A]/10 text-[#1B8A7A] border-[#1B8A7A]/30";
-                      else if (isLogin) badge = "bg-[#8B1A1A]/10 text-[#8B1A1A] border-[#8B1A1A]/20";
-                      else if (log.action === "DRAFT_SAVE") badge = "bg-amber-50 text-amber-700 border-amber-200";
 
-                      return (
-                        <tr key={log.id} className="hover:bg-[#FDF6EE] transition-colors">
-                          <td className="py-3.5 px-5">
-                            <span className="font-bold text-[#1A0A0A] text-xs">{log.user.name}</span>
-                            <span className="block text-[10px] text-[#9A7E6A]">@{log.user.username}</span>
-                          </td>
-                          <td className="py-3.5 px-5 text-xs font-semibold text-[#5C4A3A]">{log.user.role}</td>
-                          <td className="py-3.5 px-5">
-                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${badge}`}>
-                              {log.action}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-5 text-xs text-[#5C4A3A] font-medium max-w-sm truncate lg:max-w-md">
-                            {renderLogDetails(log.details)}
-                          </td>
-                          <td className="py-3.5 px-5 text-xs text-[#9A7E6A]">
-                            {new Date(log.timestamp).toLocaleString("en-IN")}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              {auditLogs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-[#9A7E6A]">
+                  <Activity size={28} className="text-[#C9A227]/50 mb-3" />
+                  <p className="text-sm font-bold text-[#5C4A3A]">No audit activity yet</p>
+                  <p className="text-xs mt-1">Logons, submissions and edits will appear here.</p>
+                </div>
+              ) : (
+                <div className="max-h-[560px] overflow-y-auto">
+                  {(() => {
+                    // Group consecutive same-day logs (already sorted newest-first)
+                    const groups: { key: string; heading: string; items: typeof auditLogs }[] = [];
+                    for (const log of auditLogs) {
+                      const k = dayKey(log.timestamp);
+                      const last = groups[groups.length - 1];
+                      if (!last || last.key !== k) groups.push({ key: k, heading: dayHeading(log.timestamp), items: [log] });
+                      else last.items.push(log);
+                    }
+                    return groups.map((g) => (
+                      <div key={g.key}>
+                        {/* Day divider */}
+                        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-5 py-2 bg-[#FDF6EE] border-y border-[#E8D5B0]">
+                          <div className="flex items-center gap-2">
+                            <Calendar size={12} className="text-[#C9A227]" />
+                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#8B1A1A]">{g.heading}</span>
+                          </div>
+                          <span className="text-[10px] font-bold text-[#9A7E6A]">{g.items.length} event{g.items.length === 1 ? "" : "s"}</span>
+                        </div>
+                        {/* Entries */}
+                        <div className="divide-y divide-[#F0E6D6]">
+                          {g.items.map((log) => {
+                            const meta = getActionMeta(log.action);
+                            const rm = roleMeta(log.user.role);
+                            const ActionIcon = meta.Icon;
+                            return (
+                              <div key={log.id} className="flex items-start gap-3 px-5 py-3 hover:bg-[#FDF6EE] transition-colors">
+                                {/* Action icon */}
+                                <div className={`shrink-0 mt-0.5 h-7 w-7 rounded-full flex items-center justify-center text-white ${meta.dot}`}>
+                                  <ActionIcon size={13} />
+                                </div>
+                                {/* Operator + action + description */}
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                    <span className="font-bold text-[#1A0A0A] text-xs">{log.user.name}</span>
+                                    <span className="text-[10px] text-[#9A7E6A]">@{log.user.username}</span>
+                                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold border ${rm.cls}`}>{rm.label}</span>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${meta.badge}`}>{meta.label}</span>
+                                  </div>
+                                  <p className="text-xs text-[#5C4A3A] mt-1 break-words">{renderLogDetails(log.action, log.details)}</p>
+                                </div>
+                                {/* Time */}
+                                <span
+                                  className="shrink-0 mt-0.5 text-xs font-semibold text-[#5C4A3A] tabular-nums whitespace-nowrap"
+                                  title={new Date(log.timestamp).toLocaleString("en-IN")}
+                                >
+                                  {new Date(log.timestamp).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
             </div>
           )}
 
