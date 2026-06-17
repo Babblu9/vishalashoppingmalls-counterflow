@@ -243,7 +243,11 @@ export async function GET(request: Request) {
 
     entriesData.forEach((entry, idx) => {
       const r = dataStart + idx;
-      ws.getRow(r).height = 20;
+      // Dynamic row height: count newline-separated bill lines in due/MC detail cells
+      const dueBillLines = entry.dueBillNo ? String(entry.dueBillNo).split("\n").length : 1;
+      const mcBillLines  = entry.mcBillNo  ? String(entry.mcBillNo).split("\n").length  : 1;
+      const maxBillLines = Math.max(dueBillLines, mcBillLines, 1);
+      ws.getRow(r).height = Math.max(20, maxBillLines * 15);
 
       const hasDiff = (entry.manualTotal || 0) !== 0;
 
