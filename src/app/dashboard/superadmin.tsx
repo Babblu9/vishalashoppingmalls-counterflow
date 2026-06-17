@@ -27,6 +27,9 @@ import {
   Trash,
   LayoutGrid,
   TrendingUp,
+  Receipt,
+  Wallet,
+  CalendarRange,
 } from "lucide-react";
 import Image from "next/image";
 import ExcelGrid, { ReportEntryData } from "@/components/ExcelGrid";
@@ -53,6 +56,22 @@ interface SummaryData {
     alertCount: number;
   };
   alerts: any[];
+}
+
+interface RangeBranchRow {
+  branchId: string;
+  branchName: string;
+  due: Record<string, number>;
+  manuallyCollected: Record<string, number>;
+}
+
+interface RangeData {
+  from: string;
+  to: string;
+  dates: string[];
+  branches: RangeBranchRow[];
+  capped: boolean;
+  maxDays: number;
 }
 
 interface BackupDay {
@@ -82,7 +101,7 @@ const EMPTY_FORM: AdminFormState = { username: "", name: "", password: "", branc
 
 export default function SuperAdminDashboard({ session }: SuperAdminDashboardProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"overview" | "liveview" | "logs" | "admins" | "backup">("liveview");
+  const [activeTab, setActiveTab] = useState<"overview" | "liveview" | "due" | "collected" | "logs" | "admins" | "backup">("liveview");
   const [selectedDate, setSelectedDate] = useState("");
   const [branches, setBranches] = useState<any[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>("all");
@@ -118,7 +137,42 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
   const [verifyOpen, setVerifyOpen] = useState<Record<string, boolean>>({});
   const [verifyAmounts, setVerifyAmounts] = useState<Record<string, Record<string, string>>>({});
 
+  // Date-range matrix state (Due / Manually Collected tabs)
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const [rangeData, setRangeData] = useState<RangeData | null>(null);
+  const [rangeLoading, setRangeLoading] = useState(false);
+
   useEffect(() => { setSelectedDate(getBusinessDate(new Date())); }, []);
+
+  // Default the range tabs to the last 7 days (inclusive of today's business date)
+  useEffect(() => {
+    const today = getBusinessDate(new Date());
+    const [y, m, d] = today.split("-").map(Number);
+    const sevenAgo = new Date(Date.UTC(y, m - 1, d - 6));
+    const fy = sevenAgo.getUTCFullYear();
+    const fm = String(sevenAgo.getUTCMonth() + 1).padStart(2, "0");
+    const fd = String(sevenAgo.getUTCDate()).padStart(2, "0");
+    setRangeFrom(`${fy}-${fm}-${fd}`);
+    setRangeTo(today);
+  }, []);
+
+  const fetchRangeData = async () => {
+    if (!rangeFrom || !rangeTo) return;
+    setRangeLoading(true);
+    try {
+      const res = await fetch(`/api/reports/range?from=${rangeFrom}&to=${rangeTo}`);
+      if (res.ok) setRangeData(await res.json());
+    } catch { /* non-critical */ } finally {
+      setRangeLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if ((activeTab === "due" || activeTab === "collected") && rangeFrom && rangeTo) fetchRangeData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, rangeFrom, rangeTo]);
+
 
   useEffect(() => {
     const fetchBranches = async () => {
@@ -323,6 +377,135 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
 
   const getBranchLabel = (branchId: string) => branches.find(b => b.id === branchId)?.name ?? "System";
 
+  // Short day label e.g. "17 Jun" from a YYYY-MM-DD string
+  const shortDay = (d: string) => {
+    const [y, m, dd] = d.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, dd)).toLocaleDateString("en-IN", {
+      day: "2-digit", month: "short", timeZone: "UTC",
+    });
+  };
+
+  // Renders a branches × days matrix for a single metric ("due" | "manuallyCollected")
+  const renderRangeMatrix = (
+    metric: "due" | "manuallyCollected",
+    opts: { title: string; icon: React.ReactNode; accent: string; cellColor: string }
+  ) => {
+    const dates = rangeData?.dates ?? [];
+    const rows = rangeData?.branches ?? [];
+    // Per-day column totals across branches
+    const colTotals: Record<string, number> = {};
+    dates.forEach((d) => { colTotals[d] = rows.reduce((s, b) => s + (b[metric][d] || 0), 0); });
+    const grand = dates.reduce((s, d) => s + colTotals[d], 0);
+
+    return (
+      <div className="space-y-6">
+        {/* Controls */}
+        <div className="bg-white border border-[#E8D5B0] rounded-xl shadow-sm p-4 flex flex-wrap items-end gap-4">
+          <div className="flex items-center gap-2">
+            <CalendarRange size={18} className="text-[#C9A227]" />
+            <h3 className="text-sm font-extrabold text-[#8B1A1A]">{opts.title} — Day-wise by Branch</h3>
+          </div>
+          <div className="flex items-end gap-3 ml-auto flex-wrap">
+            <label className="flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wider text-[#9A7E6A]">
+              From
+              <input
+                type="date"
+                value={rangeFrom}
+                max={rangeTo || undefined}
+                onChange={(e) => setRangeFrom(e.target.value)}
+                className="px-3 py-1.5 bg-white border border-[#E8D5B0] rounded-lg text-xs font-semibold text-[#1A0A0A] focus:outline-none focus:border-[#C9A227]"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wider text-[#9A7E6A]">
+              To
+              <input
+                type="date"
+                value={rangeTo}
+                min={rangeFrom || undefined}
+                onChange={(e) => setRangeTo(e.target.value)}
+                className="px-3 py-1.5 bg-white border border-[#E8D5B0] rounded-lg text-xs font-semibold text-[#1A0A0A] focus:outline-none focus:border-[#C9A227]"
+              />
+            </label>
+            <button
+              onClick={fetchRangeData}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#C9A227] hover:bg-[#A07A15] text-xs font-bold text-white transition-all cursor-pointer"
+            >
+              <RefreshCw size={12} className={rangeLoading ? "animate-spin" : ""} />
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        {rangeData?.capped && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs font-semibold text-amber-700">
+            <AlertTriangle size={13} />
+            <span>Range limited to {rangeData.maxDays} days. Narrow the dates to see a shorter span.</span>
+          </div>
+        )}
+
+        {/* Matrix */}
+        <div className="bg-white border border-[#E8D5B0] rounded-xl shadow-sm overflow-hidden">
+          <div className={`px-6 py-4 flex items-center gap-2 ${opts.accent}`}>
+            {opts.icon}
+            <h3 className="text-sm font-bold text-white">{opts.title}</h3>
+            <span className="text-[10px] text-white/60 font-semibold ml-auto">
+              {dates.length} day{dates.length === 1 ? "" : "s"} · {rangeData?.from} → {rangeData?.to}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="bg-[#6B1212] text-[#C9A227] font-bold uppercase tracking-wider">
+                  <th className="py-3 px-4 text-left sticky left-0 bg-[#6B1212] z-10 border-r border-[#C9A227]/20 min-w-[140px]">Branch</th>
+                  {dates.map((d) => (
+                    <th key={d} className="py-3 px-3 text-right border-r border-[#C9A227]/20 whitespace-nowrap">{shortDay(d)}</th>
+                  ))}
+                  <th className="py-3 px-3 text-right bg-[#5A0F0F] whitespace-nowrap">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E8D5B0]">
+                {rangeLoading ? (
+                  <tr><td colSpan={dates.length + 2} className="py-10 text-center text-[#9A7E6A] text-sm">Loading…</td></tr>
+                ) : rows.length === 0 ? (
+                  <tr><td colSpan={dates.length + 2} className="py-10 text-center text-[#9A7E6A] text-sm">No data for this range.</td></tr>
+                ) : (
+                  rows.map((b) => {
+                    const rowTotal = dates.reduce((s, d) => s + (b[metric][d] || 0), 0);
+                    return (
+                      <tr key={b.branchId} className="hover:bg-[#FDF6EE] transition-colors">
+                        <td className="py-3 px-4 sticky left-0 bg-white z-10 border-r border-[#E8D5B0] font-bold text-[#8B1A1A]">{b.branchName}</td>
+                        {dates.map((d) => {
+                          const v = b[metric][d] || 0;
+                          return (
+                            <td key={d} className={`py-3 px-3 text-right border-r border-[#E8D5B0] ${v > 0 ? opts.cellColor + " font-semibold" : "text-[#C9B8A8]"}`}>
+                              {v > 0 ? formatCurrency(v) : "—"}
+                            </td>
+                          );
+                        })}
+                        <td className="py-3 px-3 text-right font-extrabold text-[#8B1A1A] bg-[#FDF6EE]">{formatCurrency(rowTotal)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+              {rows.length > 0 && (
+                <tfoot>
+                  <tr className="bg-[#8B1A1A] font-extrabold text-white border-t-2 border-[#C9A227]/40">
+                    <td className="py-3 px-4 sticky left-0 bg-[#8B1A1A] z-10 border-r border-[#C9A227]/20 text-[#C9A227] uppercase tracking-wider">Total</td>
+                    {dates.map((d) => (
+                      <td key={d} className="py-3 px-3 text-right border-r border-[#C9A227]/20">{colTotals[d] > 0 ? formatCurrency(colTotals[d]) : "—"}</td>
+                    ))}
+                    <td className="py-3 px-3 text-right text-[#C9A227]">{formatCurrency(grand)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
 
   return (
     <div className="flex min-h-screen bg-[#FDF6EE] text-[#1A0A0A]">
@@ -343,6 +526,8 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
             {[
               { id: "liveview", label: "Live Branch View", icon: LayoutGrid },
               { id: "overview", label: "Overview", icon: Building },
+              { id: "due", label: "Due", icon: Receipt },
+              { id: "collected", label: "Manually Collected", icon: Wallet },
               { id: "logs", label: "System Audit Logs", icon: Activity },
               { id: "admins", label: "Admin Credentials", icon: ShieldCheck },
               { id: "backup", label: "History & Backup", icon: ArchiveRestore },
@@ -445,8 +630,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                         <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">G.Pay</th>
                         <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">Card</th>
                         <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">C.F</th>
-                        <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">Due</th>
-                        <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">M.C</th>
                         <th className="py-3 px-3 text-right border-r border-[#C9A227]/20">C.T Sum</th>
                         <th className="py-3 px-3 text-right">+/-</th>
                       </tr>
@@ -487,8 +670,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                             <td className="py-3 px-3 text-right font-semibold text-[#1A0A0A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.gpay)}</td>
                             <td className="py-3 px-3 text-right font-semibold text-[#1A0A0A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.card)}</td>
                             <td className="py-3 px-3 text-right font-semibold text-[#1A0A0A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.counterFlow)}</td>
-                            <td className="py-3 px-3 text-right font-semibold text-[#1B8A7A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.totalDue)}</td>
-                            <td className="py-3 px-3 text-right font-semibold text-[#5C4A3A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.manuallyCollected || 0)}</td>
                             <td className="py-3 px-3 text-right font-extrabold text-[#8B1A1A] border-r border-[#E8D5B0]">{formatCurrency(branch.totals.systemTotal)}</td>
                             <td className={`py-3 px-3 text-right font-extrabold ${hasDiff ? "text-red-600" : "text-[#1B8A7A]"}`}>
                               {formatCurrency(branch.totals.manualTotal || 0)}
@@ -519,8 +700,6 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
                             <td className="py-3 px-3 text-right border-r border-[#C9A227]/20">{formatCurrency(gt.gpay)}</td>
                             <td className="py-3 px-3 text-right border-r border-[#C9A227]/20">{formatCurrency(gt.card)}</td>
                             <td className="py-3 px-3 text-right border-r border-[#C9A227]/20">{formatCurrency(gt.counterFlow)}</td>
-                            <td className="py-3 px-3 text-right border-r border-[#C9A227]/20">{formatCurrency(gt.totalDue)}</td>
-                            <td className="py-3 px-3 text-right border-r border-[#C9A227]/20">{formatCurrency(gt.manuallyCollected)}</td>
                             <td className="py-3 px-3 text-right border-r border-[#C9A227]/20 text-[#C9A227]">{formatCurrency(gt.systemTotal)}</td>
                             <td className={`py-3 px-3 text-right ${gt.manualTotal !== 0 ? "text-red-300" : "text-[#C9A227]"}`}>{formatCurrency(gt.manualTotal)}</td>
                           </tr>
@@ -588,6 +767,20 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
               </div>
             </>
           )}
+
+          {activeTab === "due" && renderRangeMatrix("due", {
+            title: "Due Created",
+            icon: <Receipt size={15} className="text-[#C9A227]" />,
+            accent: "bg-[#1B8A7A]",
+            cellColor: "text-[#1B8A7A]",
+          })}
+
+          {activeTab === "collected" && renderRangeMatrix("manuallyCollected", {
+            title: "Manually Collected",
+            icon: <Wallet size={15} className="text-[#C9A227]" />,
+            accent: "bg-[#5C4A3A]",
+            cellColor: "text-[#5C4A3A]",
+          })}
 
           {activeTab === "liveview" && (
             <div className="space-y-6">
