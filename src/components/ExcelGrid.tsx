@@ -227,11 +227,15 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
 
   // ── Multi-entry due bill handlers ────────────────────────────────────────────
 
+  // Re-compute totalDue from the sum of all due bill amounts
+  const sumDueBills = (bills: DueBillItem[]) =>
+    bills.reduce((acc, b) => acc + (Number(b.amount) || 0), 0);
+
   const handleAddDueBill = useCallback((rIdx: number) => {
     if (isReadOnly) return;
     const updated = [...data];
     const bills = [...(updated[rIdx].dueBills || []), { billNo: "", name: "", amount: 0, mobile: "" }];
-    updated[rIdx] = { ...updated[rIdx], dueBills: bills };
+    updated[rIdx] = { ...updated[rIdx], dueBills: bills, totalDue: sumDueBills(bills) };
     onChange(updated);
   }, [data, isReadOnly, onChange]);
 
@@ -239,7 +243,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
     if (isReadOnly) return;
     const updated = [...data];
     const bills = (updated[rIdx].dueBills || []).filter((_, i) => i !== bIdx);
-    updated[rIdx] = { ...updated[rIdx], dueBills: bills };
+    updated[rIdx] = { ...updated[rIdx], dueBills: bills, totalDue: sumDueBills(bills) };
     onChange(updated);
   }, [data, isReadOnly, onChange]);
 
@@ -251,7 +255,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
       ...bills[bIdx],
       [field]: field === "amount" ? (parseFloat(value.replace(/[^0-9.-]/g, "")) || 0) : value,
     };
-    updated[rIdx] = { ...updated[rIdx], dueBills: bills };
+    updated[rIdx] = { ...updated[rIdx], dueBills: bills, totalDue: sumDueBills(bills) };
     onChange(updated);
   }, [data, isReadOnly, onChange]);
 
@@ -367,7 +371,9 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                       {COLUMNS.map((col, cIdx) => {
                         // For DUE columns, disable if not allowed for this counter in Siddipet
                         const isDueCol = col.key === "totalDue";
-                        const effectivelyEditable = col.editable && !isReadOnly && (!isDueCol || dueAllowed);
+                        // When due bills are entered via sub-panel, totalDue is auto-summed — block direct editing
+                        const hasDueBills = isDueCol && (row.dueBills?.length ?? 0) > 0;
+                        const effectivelyEditable = col.editable && !isReadOnly && (!isDueCol || dueAllowed) && !hasDueBills;
                         const isColEditable = effectivelyEditable;
                         const value = row[col.key];
                         const isFocused = focusedCell?.rowIndex === rIdx && focusedCell?.colIndex === cIdx;
@@ -386,6 +392,10 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                         } else if (isDueCol && !dueAllowed) {
                           tdClass = "text-right bg-[#F5F5F5]";
                           inputClass = "text-gray-400 cursor-not-allowed";
+                        } else if (hasDueBills) {
+                          // Auto-computed from due bill sub-panel — teal tint
+                          tdClass = "text-right bg-[#F0FDF4]";
+                          inputClass = "text-[#15803D] font-semibold cursor-default";
                         }
 
                         return (
@@ -402,6 +412,15 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                             ) : isDueCol && !dueAllowed ? (
                               /* Disabled DUE cell for non-permitted counters in Siddipet */
                               <div className="py-2.5 px-3 text-xs text-gray-400 text-right select-none">—</div>
+                            ) : hasDueBills ? (
+                              /* Auto-computed from due bill sub-panel — not manually editable */
+                              <div
+                                className="py-2.5 px-3 text-xs text-[#15803D] font-semibold text-right select-none flex items-center justify-end gap-1"
+                                title="Auto-computed from due bill details — edit bills below"
+                              >
+                                <Lock size={9} className="opacity-50 shrink-0" />
+                                {fmt(row.totalDue || 0)}
+                              </div>
                             ) : isFocused ? (
                               <input
                                 key={`edit-${rIdx}-${cIdx}`}
