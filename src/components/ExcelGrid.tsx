@@ -239,6 +239,10 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
   const sumDueBills = (bills: DueBillItem[]) =>
     bills.reduce((acc, b) => acc + (Number(b.amount) || 0), 0);
 
+  // Re-compute manuallyCollected from the sum of all manually collected bill amounts
+  const sumManuallyCollectedBills = (bills: ManuallyCollectedBillItem[]) =>
+    bills.reduce((acc, b) => acc + (Number(b.amount) || 0), 0);
+
   const handleAddDueBill = useCallback((rIdx: number) => {
     if (isReadOnly) return;
     const updated = [...data];
@@ -271,7 +275,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
     if (isReadOnly) return;
     const updated = [...data];
     const bills = [...(updated[rIdx].manuallyCollectedBills || []), { billNo: "", name: "", mobile: "", amount: 0 }];
-    updated[rIdx] = { ...updated[rIdx], manuallyCollectedBills: bills };
+    updated[rIdx] = { ...updated[rIdx], manuallyCollectedBills: bills, manuallyCollected: sumManuallyCollectedBills(bills) };
     onChange(updated);
   }, [data, isReadOnly, onChange]);
 
@@ -279,7 +283,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
     if (isReadOnly) return;
     const updated = [...data];
     const bills = (updated[rIdx].manuallyCollectedBills || []).filter((_, i) => i !== bIdx);
-    updated[rIdx] = { ...updated[rIdx], manuallyCollectedBills: bills };
+    updated[rIdx] = { ...updated[rIdx], manuallyCollectedBills: bills, manuallyCollected: sumManuallyCollectedBills(bills) };
     onChange(updated);
   }, [data, isReadOnly, onChange]);
 
@@ -291,7 +295,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
       ...bills[bIdx],
       [field]: field === "amount" ? (parseFloat(value.replace(/[^0-9.-]/g, "")) || 0) : value,
     };
-    updated[rIdx] = { ...updated[rIdx], manuallyCollectedBills: bills };
+    updated[rIdx] = { ...updated[rIdx], manuallyCollectedBills: bills, manuallyCollected: sumManuallyCollectedBills(bills) };
     onChange(updated);
   }, [data, isReadOnly, onChange]);
 
@@ -385,7 +389,10 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                         const isDueCol = col.key === "totalDue";
                         // When due bills are entered via sub-panel, totalDue is auto-summed — block direct editing
                         const hasDueBills = isDueCol && (row.dueBills?.length ?? 0) > 0;
-                        const effectivelyEditable = col.editable && !isReadOnly && (!isDueCol || dueAllowed) && !hasDueBills;
+                        // When manually collected bills are entered via sub-panel, manuallyCollected is auto-summed
+                        const isManualCol = col.key === "manuallyCollected";
+                        const hasManualBills = isManualCol && (row.manuallyCollectedBills?.length ?? 0) > 0;
+                        const effectivelyEditable = col.editable && !isReadOnly && (!isDueCol || dueAllowed) && !hasDueBills && !hasManualBills;
                         const isColEditable = effectivelyEditable;
                         const value = row[col.key];
                         const isFocused = focusedCell?.rowIndex === rIdx && focusedCell?.colIndex === cIdx;
@@ -406,6 +413,10 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                           inputClass = "text-gray-400 cursor-not-allowed";
                         } else if (hasDueBills) {
                           // Auto-computed from due bill sub-panel — teal tint
+                          tdClass = "text-right bg-[#F0FDF4]";
+                          inputClass = "text-[#15803D] font-semibold cursor-default";
+                        } else if (hasManualBills) {
+                          // Auto-computed from manually collected bill sub-panel — teal tint
                           tdClass = "text-right bg-[#F0FDF4]";
                           inputClass = "text-[#15803D] font-semibold cursor-default";
                         }
@@ -432,6 +443,15 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                               >
                                 <Lock size={9} className="opacity-50 shrink-0" />
                                 {fmt(row.totalDue || 0)}
+                              </div>
+                            ) : hasManualBills ? (
+                              /* Auto-computed from manually collected bill sub-panel — not manually editable */
+                              <div
+                                className="py-2.5 px-3 text-xs text-[#15803D] font-semibold text-right select-none flex items-center justify-end gap-1"
+                                title="Auto-computed from manually collected bill details — edit bills below"
+                              >
+                                <Lock size={9} className="opacity-50 shrink-0" />
+                                {fmt(row.manuallyCollected || 0)}
                               </div>
                             ) : isFocused ? (
                               <input
@@ -850,7 +870,7 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
             </div>
           </div>
 
-          {/* Manually Collected Bills section — inline-editable for all counters */}
+          {/* Manually Collected Bills section — display-only summary */}
           <div>
             <div className="px-4 py-1.5 bg-[#EEF2F7] text-[10px] font-bold text-[#5C4A3A] uppercase tracking-widest">
               Manually Collected
@@ -859,128 +879,38 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-[#FDF6EE] border-b border-[#E8D5B0]">
                   <tr>
-                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase w-20 border-r border-[#E8D5B0]">Counter</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase border-r border-[#E8D5B0]">Counter</th>
                     <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase border-r border-[#E8D5B0]">Bill No</th>
                     <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase border-r border-[#E8D5B0]">Name</th>
                     <th className="px-3 py-1.5 text-left text-[9px] font-bold text-[#9A7E6A] uppercase border-r border-[#E8D5B0]">Mobile</th>
                     <th className="px-3 py-1.5 text-right text-[9px] font-bold text-[#9A7E6A] uppercase">Amount</th>
-                    {!isReadOnly && <th className="px-1 py-1.5 w-12"></th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E8D5B0]">
                   {(() => {
-                    return processedData.flatMap((r, rIdx) => {
+                    const rows: { counterName: string; billNo: string; name: string; mobile: string; amount: number }[] = [];
+                    data.forEach((r) => {
                       const bills = r.manuallyCollectedBills || [];
-
-                      if (bills.length === 0) {
-                        return [(
-                          <tr key={`${r.counterId}-empty`} className="hover:bg-[#FDF6EE]">
-                            <td className="px-3 py-2 text-xs font-bold text-[#8B1A1A] border-r border-[#E8D5B0]">{r.counterName}</td>
-                            <td colSpan={3} className="px-3 py-2 border-r border-[#E8D5B0]">
-                              {!isReadOnly ? (
-                                <button
-                                  onClick={() => handleAddManuallyCollectedBill(rIdx)}
-                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] bg-[#5C4A3A]/10 text-[#5C4A3A] hover:bg-[#5C4A3A]/20 border border-[#5C4A3A]/30"
-                                >
-                                  <Plus size={9} /> Add Bill
-                                </button>
-                              ) : (
-                                <span className="text-xs text-[#9A7E6A] italic">No bills recorded.</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-right text-xs text-[#9A7E6A]">—</td>
-                            {!isReadOnly && <td></td>}
-                          </tr>
-                        )];
-                      }
-
-                      return bills.map((bill, bIdx) => {
-                        const isLastBill = bIdx === bills.length - 1;
-                        return (
-                          <tr key={`${r.counterId}-${bIdx}`} className="hover:bg-[#FDF6EE]">
-                            <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A] align-top border-r border-[#E8D5B0]">
-                              {bIdx === 0 ? r.counterName : ""}
-                            </td>
-                            <td className="px-2 py-1 border-r border-[#E8D5B0]">
-                              {!isReadOnly ? (
-                                <input
-                                  type="text"
-                                  value={bill.billNo}
-                                  onChange={(e) => handleManuallyCollectedBillChange(rIdx, bIdx, "billNo", e.target.value)}
-                                  placeholder="e.g. BL-001"
-                                  className="w-full bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227]"
-                                />
-                              ) : (
-                                <span className="text-xs text-[#5C4A3A]">{bill.billNo || "—"}</span>
-                              )}
-                            </td>
-                            <td className="px-2 py-1 border-r border-[#E8D5B0]">
-                              {!isReadOnly ? (
-                                <input
-                                  type="text"
-                                  value={bill.name}
-                                  onChange={(e) => handleManuallyCollectedBillChange(rIdx, bIdx, "name", e.target.value)}
-                                  placeholder="Customer name"
-                                  className="w-full bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227]"
-                                />
-                              ) : (
-                                <span className="text-xs text-[#5C4A3A]">{bill.name || "—"}</span>
-                              )}
-                            </td>
-                            <td className="px-2 py-1 border-r border-[#E8D5B0]">
-                              {!isReadOnly ? (
-                                <input
-                                  type="tel"
-                                  value={bill.mobile}
-                                  onChange={(e) => handleManuallyCollectedBillChange(rIdx, bIdx, "mobile", e.target.value)}
-                                  placeholder="10-digit"
-                                  maxLength={10}
-                                  className="w-full bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] focus:outline-none focus:border-[#C9A227]"
-                                />
-                              ) : (
-                                <span className="text-xs text-[#5C4A3A]">{bill.mobile || "—"}</span>
-                              )}
-                            </td>
-                            <td className="px-2 py-1">
-                              {!isReadOnly ? (
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={bill.amount || ""}
-                                  onChange={(e) => handleManuallyCollectedBillChange(rIdx, bIdx, "amount", e.target.value)}
-                                  placeholder="0"
-                                  className="w-full bg-white border border-[#E8D5B0] rounded px-2 py-1 text-xs text-[#1A0A0A] text-right focus:outline-none focus:border-[#C9A227]"
-                                />
-                              ) : (
-                                <span className="text-xs font-bold text-[#5C4A3A] text-right block">{fmt(bill.amount || 0)}</span>
-                              )}
-                            </td>
-                            {!isReadOnly && (
-                              <td className="px-1 py-1">
-                                <div className="flex items-center gap-0.5 justify-center">
-                                  <button
-                                    onClick={() => handleRemoveManuallyCollectedBill(rIdx, bIdx)}
-                                    className="text-red-400 hover:text-red-600 p-0.5 rounded hover:bg-red-50"
-                                    title="Remove this bill"
-                                  >
-                                    <X size={11} />
-                                  </button>
-                                  {isLastBill && (
-                                    <button
-                                      onClick={() => handleAddManuallyCollectedBill(rIdx)}
-                                      className="text-[#5C4A3A] hover:text-[#1A0A0A] p-0.5 rounded hover:bg-[#EEF2F7]"
-                                      title="Add another bill"
-                                    >
-                                      <Plus size={11} />
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      });
+                      bills.forEach((b) => rows.push({ counterName: r.counterName, billNo: b.billNo, name: b.name, mobile: b.mobile, amount: b.amount }));
                     });
+                    if (rows.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-4 text-center text-xs text-[#9A7E6A]">
+                            No manually collected entries.
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return rows.map((r, i) => (
+                      <tr key={i} className="hover:bg-[#FDF6EE]">
+                        <td className="px-3 py-1.5 text-xs font-bold text-[#8B1A1A] border-r border-[#E8D5B0]">{r.counterName}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A] border-r border-[#E8D5B0]">{r.billNo || "—"}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A] border-r border-[#E8D5B0]">{r.name || "—"}</td>
+                        <td className="px-3 py-1.5 text-xs text-[#5C4A3A] border-r border-[#E8D5B0]">{r.mobile || "—"}</td>
+                        <td className="px-3 py-1.5 text-right text-xs font-bold text-[#5C4A3A]">{fmt(r.amount || 0)}</td>
+                      </tr>
+                    ));
                   })()}
                 </tbody>
                 {data.some((r) => (r.manuallyCollected || 0) > 0) && (
@@ -988,7 +918,6 @@ export default function ExcelGrid({ data, onChange, isReadOnly, saveStatus, bran
                     <tr className="border-t-2 border-[#E8D5B0] bg-[#FDF6EE]">
                       <td colSpan={4} className="px-3 py-2 text-xs font-extrabold text-[#5C4A3A] uppercase">Total MC</td>
                       <td className="px-3 py-2 text-right text-xs font-extrabold text-[#5C4A3A]">{fmt(totals.manuallyCollected)}</td>
-                      {!isReadOnly && <td></td>}
                     </tr>
                   </tfoot>
                 )}

@@ -281,9 +281,7 @@ export async function POST(request: Request) {
         const gpay = Number(entry.gpay) || 0;
         const card = Number(entry.card) || 0;
         const counterFlow = Number(entry.counterFlow) || 0;
-        const totalDue = Number(entry.totalDue) || 0;
         const collectedDue = Number(entry.collectedDue) || 0;
-        const manuallyCollected = Number(entry.manuallyCollected) || 0;
         const manualTotal = Number(entry.manualTotal) || 0;
 
         // Multi-entry arrays (preferred); fall back to legacy single fields
@@ -293,6 +291,14 @@ export async function POST(request: Request) {
           Array.isArray(entry.collectedDueBills) ? entry.collectedDueBills : [];
         const manuallyCollectedBills: { billNo: string; name: string; mobile: string; amount: number }[] =
           Array.isArray(entry.manuallyCollectedBills) ? entry.manuallyCollectedBills : [];
+
+        // Auto-compute totals from bill arrays when present (mirrors frontend auto-sum)
+        const totalDue = dueBills.length > 0
+          ? dueBills.reduce((s, b) => s + (Number(b.amount) || 0), 0)
+          : (Number(entry.totalDue) || 0);
+        const manuallyCollected = manuallyCollectedBills.length > 0
+          ? manuallyCollectedBills.reduce((s, b) => s + (Number(b.amount) || 0), 0)
+          : (Number(entry.manuallyCollected) || 0);
 
         // Legacy single fields — populated from first array element for backward compat
         const dueBillNo = dueBills[0]?.billNo || entry.dueBillNo || null;
