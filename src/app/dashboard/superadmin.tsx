@@ -91,6 +91,18 @@ interface RangeData {
   maxDays: number;
 }
 
+interface BillRow {
+  branchId: string;
+  branchName: string;
+  businessDate: string;
+  counterId: string;
+  counterName: string;
+  billNo: string;
+  name: string;
+  mobile: string;
+  amount: number;
+}
+
 interface BackupDay {
   businessDate: string;
   branches: { branchId: string; branchName: string; status: string; submittedBy: string | null; submittedAt: string | null; entryCount: number }[];
@@ -156,6 +168,11 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
   const [rangeData, setRangeData] = useState<RangeData | null>(null);
   const [rangeLoading, setRangeLoading] = useState(false);
 
+  // Bill-level detail rows for the Due / Manually Collected range tabs
+  const [dueBillDetails, setDueBillDetails] = useState<BillRow[]>([]);
+  const [manualBillDetails, setManualBillDetails] = useState<BillRow[]>([]);
+  const [billsLoading, setBillsLoading] = useState(false);
+
   // C.T Sum day-wise verification matrix state (Overview tab) — persisted to DB
   const [ctFrom, setCtFrom] = useState("");
   const [ctTo, setCtTo] = useState("");
@@ -196,8 +213,35 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
     }
   };
 
+  // Fetch the bill-level detail rows (one per individual bill) for the active
+  // range tab. Both due & manual are requested together so switching tabs is
+  // instant and the totals stay consistent with the matrix above.
+  const fetchBillDetails = async () => {
+    if (!rangeFrom || !rangeTo) return;
+    setBillsLoading(true);
+    try {
+      const [dueRes, manualRes] = await Promise.all([
+        fetch(`/api/reports/bills?from=${rangeFrom}&to=${rangeTo}&type=due`),
+        fetch(`/api/reports/bills?from=${rangeFrom}&to=${rangeTo}&type=manual`),
+      ]);
+      if (dueRes.ok) {
+        const d = await dueRes.json();
+        setDueBillDetails(d.bills || []);
+      }
+      if (manualRes.ok) {
+        const m = await manualRes.json();
+        setManualBillDetails(m.bills || []);
+      }
+    } catch { /* non-critical */ } finally {
+      setBillsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if ((activeTab === "due" || activeTab === "collected") && rangeFrom && rangeTo) fetchRangeData();
+    if ((activeTab === "due" || activeTab === "collected") && rangeFrom && rangeTo) {
+      fetchRangeData();
+      fetchBillDetails();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, rangeFrom, rangeTo]);
 
@@ -562,6 +606,12 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
     dates.forEach((d) => { colTotals[d] = rows.reduce((s, b) => s + (b[metric][d] || 0), 0); });
     const grand = dates.reduce((s, d) => s + colTotals[d], 0);
 
+    // Bill-level detail rows for the breakdown table beneath the matrix
+    const billRows: BillRow[] = metric === "due" ? dueBillDetails : manualBillDetails;
+    const billTotal = billRows.reduce((s, r) => s + (r.amount || 0), 0);
+    const detailTitle = metric === "due" ? "Due Bill Details" : "Manually Collected Bill Details";
+    const detailEmpty = metric === "due" ? "No due bills recorded in this range." : "No manually collected bills recorded in this range.";
+
     return (
       <div className="space-y-6">
         {/* Controls */}
@@ -667,10 +717,81 @@ export default function SuperAdminDashboard({ session }: SuperAdminDashboardProp
             </table>
           </div>
         </div>
+
+        {/* Bill-level detail breakdown — one row per individual bill in the range */}
+        <div className="bg-white border border-[#E8D5B0] rounded-xl shadow-sm overflow-hidden">
+          <div className={`px-6 py-4 flex flex-wrap items-center justify-between gap-3 ${opts.accent}`}>
+            <div className="flex items-center gap-2">
+              {opts.icon}
+              <h3 className="text-sm font-bold text-white">{detailTitle}</h3>
+            </div>
+            <div className="flex items-center gap-2 text-[10px] font-semibold text-white/85">
+              <span className="px-2 py-0.5 rounded-full bg-white/15 border border-white/20 whitespace-nowrap">
+                {billRows.length} bill{billRows.length === 1 ? "" : "s"}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-white/15 border border-white/20 whitespace-nowrap">
+                Total {formatCurrency(billTotal)}
+              </span>
+              <span className="text-white/60 whitespace-nowrap hidden sm:inline">
+                {rangeData?.from} → {rangeData?.to}
+              </span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto overflow-y-auto max-h-[480px]">
+            <table className="w-full border-collapse text-xs min-w-[820px]">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-[#6B1212] text-[#C9A227] font-bold uppercase tracking-wider">
+                  <th className="py-3 px-4 text-left border-r border-[#C9A227]/20 whitespace-nowrap">Date</th>
+                  <th className="py-3 px-4 text-left border-r border-[#C9A227]/20 whitespace-nowrap">Branch</th>
+                  <th className="py-3 px-3 text-left border-r border-[#C9A227]/20 whitespace-nowrap">Counter</th>
+                  <th className="py-3 px-3 text-left border-r border-[#C9A227]/20 whitespace-nowrap">Bill No</th>
+                  <th className="py-3 px-3 text-left border-r border-[#C9A227]/20 whitespace-nowrap">Customer</th>
+                  <th className="py-3 px-3 text-left border-r border-[#C9A227]/20 whitespace-nowrap">Mobile</th>
+                  <th className="py-3 px-3 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E8D5B0]">
+                {billsLoading ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-[#9A7E6A] text-sm">
+                      <RefreshCw size={15} className="animate-spin inline text-[#C9A227]" /> Loading bill details…
+                    </td>
+                  </tr>
+                ) : billRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-[#9A7E6A] text-sm">
+                      {detailEmpty}
+                    </td>
+                  </tr>
+                ) : (
+                  billRows.map((b, i) => (
+                    <tr key={`${b.branchId}-${b.counterId}-${b.businessDate}-${i}`} className="hover:bg-[#FDF6EE] transition-colors">
+                      <td className="py-2.5 px-4 border-r border-[#E8D5B0] whitespace-nowrap font-semibold text-[#5C4A3A]">{shortDay(b.businessDate)}</td>
+                      <td className="py-2.5 px-4 border-r border-[#E8D5B0] font-bold text-[#8B1A1A] whitespace-nowrap">{b.branchName}</td>
+                      <td className="py-2.5 px-3 border-r border-[#E8D5B0] text-[#1A0A0A] whitespace-nowrap">{b.counterName}</td>
+                      <td className="py-2.5 px-3 border-r border-[#E8D5B0] text-[#5C4A3A] whitespace-nowrap font-mono">{b.billNo || "—"}</td>
+                      <td className="py-2.5 px-3 border-r border-[#E8D5B0] text-[#1A0A0A] whitespace-nowrap">{b.name || "—"}</td>
+                      <td className="py-2.5 px-3 border-r border-[#E8D5B0] text-[#5C4A3A] whitespace-nowrap">{b.mobile || "—"}</td>
+                      <td className={`py-2.5 px-3 text-right font-bold whitespace-nowrap ${metric === "due" ? "text-[#1B8A7A]" : "text-[#5C4A3A]"}`}>{formatCurrency(b.amount)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {billRows.length > 0 && (
+                <tfoot className="sticky bottom-0">
+                  <tr className="bg-[#8B1A1A] font-extrabold text-white border-t-2 border-[#C9A227]/40">
+                    <td colSpan={6} className="py-3 px-4 text-[#C9A227] uppercase tracking-wider">Total</td>
+                    <td className="py-3 px-3 text-right text-[#C9A227] whitespace-nowrap">{formatCurrency(billTotal)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
       </div>
     );
   };
-
 
   return (
     <div className="flex min-h-screen bg-[#FDF6EE] text-[#1A0A0A]">
