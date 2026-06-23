@@ -196,20 +196,24 @@ export async function GET(request: Request) {
           .sort((a, b) => counterSort(a.counter.name, b.counter.name))
           .map((e) => {
             const rawDue = e.dueBillsJson as any[];
-            const dueBills = Array.isArray(rawDue) && rawDue.length > 0 ? rawDue : null;
+            const dueBills = Array.isArray(rawDue) && rawDue.length > 0
+              ? rawDue
+              : (e.dueBillNo || e.dueBillName || e.dueBillMobile || e.dueBillAmount)
+                ? [{ billNo: e.dueBillNo || "", name: e.dueBillName || "", mobile: e.dueBillMobile || "", amount: e.dueBillAmount || 0 }]
+                : [];
             const rawCol = e.collectedDueBillsJson as any[];
-            const colBills = Array.isArray(rawCol) && rawCol.length > 0 ? rawCol : null;
+            const colBills = Array.isArray(rawCol) && rawCol.length > 0
+              ? rawCol
+              : (e.collectedDueBillNo || e.collectedDueBillName || e.collectedDueBillMobile || e.collectedDue)
+                ? [{ billNo: e.collectedDueBillNo || "", name: e.collectedDueBillName || "", mobile: e.collectedDueBillMobile || "", amount: e.collectedDue || 0 }]
+                : [];
             return {
               counterName: e.counter.name,
               cash: e.cash, gpay: e.gpay, card: e.card,
               totalDue: e.totalDue, collectedDue: e.collectedDue,
               counterFlow: e.counterFlow,
-              dueBillNo:   dueBills ? dueBills.map((b: any) => b.billNo || "").join("\n") : (e.dueBillNo || ""),
-              dueBillName: dueBills ? dueBills.map((b: any) => b.name   || "").join("\n") : (e.dueBillName || ""),
-              dueBillMobile: dueBills ? dueBills.map((b: any) => b.mobile || "").join("\n") : (e.dueBillMobile || ""),
-              collectedDueBillNo:     colBills ? colBills.map((b: any) => b.billNo || "").join("\n") : (e.collectedDueBillNo || ""),
-              collectedDueBillName:   colBills ? colBills.map((b: any) => b.name   || "").join("\n") : (e.collectedDueBillName || ""),
-              collectedDueBillMobile: colBills ? colBills.map((b: any) => b.mobile || "").join("\n") : (e.collectedDueBillMobile || ""),
+              dueBills,
+              colBills,
               // G TOTAL = cash + gpay + card + counterFlow + totalDue (DUE CREATED)
               systemTotal: e.cash + e.gpay + e.card + e.counterFlow + e.totalDue,
               manualTotal: e.manualTotal,
@@ -220,17 +224,23 @@ export async function GET(request: Request) {
         entriesData = counters.map((c) => ({
           counterName: c.name, cash: 0, gpay: 0, card: 0,
           totalDue: 0, collectedDue: 0, counterFlow: 0,
-          dueBillNo: "", dueBillName: "", dueBillMobile: "",
-          collectedDueBillNo: "", collectedDueBillName: "", collectedDueBillMobile: "",
+          dueBills: [],
+          colBills: [],
           systemTotal: 0, manualTotal: 0,
         }));
       }
 
       const dataStart = 7;
-      entriesData.forEach((entry, idx) => {
-        const r = dataStart + idx;
-        ws.getRow(r).height = 20;
+      let currentRow = dataStart;
+
+      entriesData.forEach((entry) => {
+        const dueBills = entry.dueBills || [];
+        const colBills = entry.colBills || [];
+        const rowSpan = Math.max(1, dueBills.length, colBills.length);
         const hasDiff = (entry.manualTotal || 0) !== 0;
+
+        // 1. Render left table data on first row
+        const r = currentRow;
         ws.getCell(`A${r}`).value = entry.counterName;
         ws.getCell(`B${r}`).value = entry.cash;
         ws.getCell(`C${r}`).value = entry.gpay;
@@ -242,36 +252,80 @@ export async function GET(request: Request) {
         ws.getCell(`H${r}`).value = { formula: `B${r}+C${r}+D${r}+E${r}+G${r}`, result: entry.systemTotal };
         // I: +/- = user-entered discrepancy (manualTotal)
         ws.getCell(`I${r}`).value = entry.manualTotal;
-        for (const col of ["A", "B", "C", "D", "E", "F", "G", "H", "I"]) {
-          const cell = ws.getCell(`${col}${r}`);
-          cell.border = allBorders();
-          cell.font = { name: "Segoe UI", size: 9 };
-          cell.alignment = col === "A" ? { vertical: "middle", horizontal: "left" } : { vertical: "middle", horizontal: "right" };
-          if (col !== "A") cell.numFmt = rupee;
-          if (col === "I" && hasDiff) { cell.fill = headerFill("FEE2E2"); cell.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "EF4444" } }; }
+
+        // 2. Borders and formatting across the rowSpan for left cols A–I
+        for (let s = 0; s < rowSpan; s++) {
+          const subRow = currentRow + s;
+          ws.getRow(subRow).height = 20;
+
+          for (const col of ["A", "B", "C", "D", "E", "F", "G", "H", "I"]) {
+            const cell = ws.getCell(`${col}${subRow}`);
+            cell.border = allBorders();
+            cell.font = { name: "Segoe UI", size: 9 };
+            cell.alignment = col === "A" ? { vertical: "middle", horizontal: "left" } : { vertical: "middle", horizontal: "right" };
+            if (col !== "A") cell.numFmt = rupee;
+            if (col === "I" && hasDiff) {
+              cell.fill = headerFill("FEE2E2");
+              cell.font = { name: "Segoe UI", size: 9, bold: true, color: { argb: "EF4444" } };
+            }
+          }
         }
-        // Due Created details
-        ws.getCell(`N${r}`).value = entry.dueBillNo;
-        ws.getCell(`O${r}`).value = entry.dueBillName;
-        ws.getCell(`P${r}`).value = entry.dueBillMobile;
-        for (const col of ["N", "O", "P"]) {
-          ws.getCell(`${col}${r}`).border = allBorders();
-          ws.getCell(`${col}${r}`).font = { name: "Segoe UI", size: 9 };
-          ws.getCell(`${col}${r}`).alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+
+        // Merge left-hand cells vertically if rowSpan > 1
+        if (rowSpan > 1) {
+          for (let colIdx = 1; colIdx <= 9; colIdx++) {
+            ws.mergeCells(currentRow, colIdx, currentRow + rowSpan - 1, colIdx);
+          }
         }
-        // Due Collected details
-        ws.getCell(`R${r}`).value = entry.collectedDueBillNo;
-        ws.getCell(`S${r}`).value = entry.collectedDueBillName;
-        ws.getCell(`T${r}`).value = entry.collectedDueBillMobile;
-        for (const col of ["R", "S", "T"]) {
-          ws.getCell(`${col}${r}`).border = allBorders();
-          ws.getCell(`${col}${r}`).font = { name: "Segoe UI", size: 9 };
-          ws.getCell(`${col}${r}`).alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+
+        // 3. Render sub-bills
+        for (let s = 0; s < rowSpan; s++) {
+          const subRow = currentRow + s;
+
+          // Due Created details
+          if (s < dueBills.length) {
+            const bill = dueBills[s];
+            ws.getCell(`N${subRow}`).value = bill.billNo || "";
+            ws.getCell(`O${subRow}`).value = bill.name || "";
+            ws.getCell(`P${subRow}`).value = bill.mobile || "";
+          } else {
+            ws.getCell(`N${subRow}`).value = "";
+            ws.getCell(`O${subRow}`).value = "";
+            ws.getCell(`P${subRow}`).value = "";
+          }
+
+          for (const col of ["N", "O", "P"]) {
+            const cell = ws.getCell(`${col}${subRow}`);
+            cell.border = allBorders();
+            cell.font = { name: "Segoe UI", size: 9 };
+            cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+          }
+
+          // Due Collected details
+          if (s < colBills.length) {
+            const bill = colBills[s];
+            ws.getCell(`R${subRow}`).value = bill.billNo || "";
+            ws.getCell(`S${subRow}`).value = bill.name || "";
+            ws.getCell(`T${subRow}`).value = bill.mobile || "";
+          } else {
+            ws.getCell(`R${subRow}`).value = "";
+            ws.getCell(`S${subRow}`).value = "";
+            ws.getCell(`T${subRow}`).value = "";
+          }
+
+          for (const col of ["R", "S", "T"]) {
+            const cell = ws.getCell(`${col}${subRow}`);
+            cell.border = allBorders();
+            cell.font = { name: "Segoe UI", size: 9 };
+            cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+          }
         }
+
+        currentRow += rowSpan;
       });
 
       // Grand total row
-      const gtRow = dataStart + entriesData.length;
+      const gtRow = currentRow;
       ws.getRow(gtRow).height = 24;
       ws.getCell(`A${gtRow}`).value = "G.T";
       ws.getCell(`A${gtRow}`).font = { name: "Segoe UI", size: 9, bold: true };
