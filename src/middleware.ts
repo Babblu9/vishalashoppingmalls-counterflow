@@ -19,13 +19,23 @@ export async function middleware(request: NextRequest) {
   // Paths that are publicly accessible
   const isAuthPage = pathname === "/login";
   const isPublicFile = pathname.startsWith("/favicon.ico") || pathname.startsWith("/_next");
+  const isApi = pathname.startsWith("/api");
 
   if (isPublicFile) {
     return NextResponse.next();
   }
 
+  // API routes must ALWAYS get JSON, never a redirect — a redirect to the /login
+  // HTML page makes fetch().json() throw "Unexpected end of JSON input".
+  const unauthorized = () => {
+    const res = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    res.cookies.delete("auth_token");
+    return res;
+  };
+
   // If not logged in and trying to access a secure area
   if (!token) {
+    if (isApi) return unauthorized();
     if (!isAuthPage && pathname !== "/") {
       return NextResponse.redirect(new URL("/login", request.url));
     }
@@ -36,6 +46,7 @@ export async function middleware(request: NextRequest) {
   const session = await verifyJwt(token);
 
   if (!session) {
+    if (isApi) return unauthorized();
     // Bad or tampered token — clear it and redirect to login
     const response = NextResponse.redirect(new URL("/login", request.url));
     response.cookies.delete("auth_token");
