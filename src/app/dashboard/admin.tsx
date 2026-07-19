@@ -81,9 +81,10 @@ export default function AdminDashboard({ session }: AdminDashboardProps) {
           entries: dataToSave,
         }),
       });
-      const resData = await response.json();
       if (response.status === 401) { router.push("/login"); return; }
-      if (!response.ok) throw new Error(resData.error || "Save failed");
+      // ponytail: parse defensively — empty/non-JSON bodies (504 timeout, 413, crash) else throw "Unexpected end of JSON input"
+      const resData = await response.json().catch(() => ({} as { error?: string }));
+      if (!response.ok) throw new Error(resData.error || `Save failed (HTTP ${response.status})`);
       setSaveStatus("saved");
       if (statusToSave === "SUBMITTED") {
         setReportStatus("SUBMITTED");
