@@ -15,11 +15,13 @@ model User {
   branchId     String?       // Null for Super Admin
   branch       Branch?       @relation(fields: [branchId], references: [id])
   passwordHash String
+  phoneNumber  String?       // Verification phone number (required for Super Admin OTP password reset)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   reports      DailyReport[] // Reports submitted/modified by this user
   auditLogs    AuditLog[]
   dayVerifications DayVerification[] @relation("DayVerifiedBy")
+  passwordResetOtps PasswordResetOtp[]
 }
 
 model Branch {
@@ -133,4 +135,18 @@ model DayVerification {
   updatedAt    DateTime  @updatedAt
 
   @@unique([branchId, businessDate])
+}
+
+// Stores active OTP verification sessions for super-admin password resets via OTPKit
+model PasswordResetOtp {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  otpKitId  String   // Transaction ID from OTPKit API
+  phone     String   // E.164 phone number OTP was sent to
+  verified  Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

@@ -2,14 +2,17 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, User, AlertCircle } from "lucide-react";
+import { Lock, User, AlertCircle, CheckCircle2 } from "lucide-react";
 import Image from "next/image";
+import AdminPasswordResetModal from "@/components/AdminPasswordResetModal";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -84,6 +87,13 @@ export default function LoginPage() {
               Account Sign In
             </h3>
 
+            {successMsg && (
+              <div className="flex items-center gap-2.5 p-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-xs mb-5">
+                <CheckCircle2 size={16} className="shrink-0 text-green-600" />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
             {error && (
               <div className="flex items-center gap-2.5 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs mb-5">
                 <AlertCircle size={16} className="shrink-0" />
@@ -117,9 +127,22 @@ export default function LoginPage() {
 
               {/* Password */}
               <div className="space-y-1.5">
-                <label htmlFor="password" className="text-xs font-bold text-[#5C4A3A] tracking-wider uppercase">
-                  Password
-                </label>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="password" className="text-xs font-bold text-[#5C4A3A] tracking-wider uppercase">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setSuccessMsg(null);
+                      setShowResetModal(true);
+                    }}
+                    className="text-xs font-semibold text-[#8B1A1A] hover:underline cursor-pointer"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <div className="relative">
                   <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[#9A7E6A]">
                     <Lock size={16} />
@@ -152,6 +175,16 @@ export default function LoginPage() {
               </button>
             </form>
           </div>
+
+          <AdminPasswordResetModal
+            isOpen={showResetModal}
+            onClose={() => setShowResetModal(false)}
+            initialUsername={username || "superadmin"}
+            onSuccess={() => {
+              setSuccessMsg("Password reset successfully! You can now sign in with your new password.");
+              setPassword("");
+            }}
+          />
 
           {/* Footer note */}
           <div className="text-center text-xs text-[#9A7E6A] space-y-1">

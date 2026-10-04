@@ -44,3 +44,6 @@ src/generated/
 # TypeScript build info
 tsconfig.tsbuildinfo
 .vercel
+
+# Local data files
+*.numbers
